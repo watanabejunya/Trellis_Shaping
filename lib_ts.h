@@ -14,8 +14,6 @@ typedef _Complex double complex;
  * 変数
  */
 
-// 変調信号のテーブル
-extern complex *constellation;
 
 /*
  * 構造体
@@ -55,7 +53,7 @@ void copy_int (int *x, int *x_copy, int n);
 void copy_complex (complex *x, complex *x_copy, int n);
 
 // インタリーバ
-void interleaver (int *x, int *y, int n);
+void xor_addition (int *x, int *y, int n);
 
 //デマルチプレクサ(num_d → num_s + num_b)
 void demultiplexer (int *d, int *s, int *b, int num_d, int num_s, int num_b, int n);
@@ -64,19 +62,28 @@ void demultiplexer (int *d, int *s, int *b, int num_d, int num_s, int num_b, int
 void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n);
 
 // 畳み込み符号化(拘束長3)
-void convolutional_coding (int *info, int *code, int info_length);
+void convolutional_coding (int *u, int *c, int n);
 
 // パリティ検査行列による復号(拘束長3)
-void parity_check_decoding (int *code, int *info, int info_length);
+void parity_check_decoding (int *c, int *u, int n);
+
+// パリティ検査行列による復号(拘束長3)
+void parallel_parity_check_decoding (int *c, int *u, int n);
 
 // パリティ検査行列の左逆行列による符号化(拘束長3)
-void inverse_parity_check_coding (int *info, int *code, int info_length);
+void inverse_parity_check_coding (int *u, int *c, int n);
 
-// QPSKマッピング(16QAM拡張)
-complex map_qpsk_extend (int bit1, int bit2);
+// 並列パリティ検査行列の左逆行列による符号化(拘束長3)
+void parallel_inverse_parity_check_coding (int *u, int *c, int n);
 
-// QPSKマッピング(64QAM拡張)
-complex map_qpsk_extend2 (int bit1, int bit2);
+// 下位ビットZPSKマッピング(16QAM対応)
+complex map_zpsk_lsb_extended ();
+
+// 下位ビットQPSKマッピング(16QAM対応)
+complex map_qpsk_lsb (int bit1, int bit2);
+
+// 下位ビットQPSKマッピング(64QAM対応)
+complex map_qpsk_lsb_extended (int bit1, int bit2);
 
 // 16QAMマッピング(type1)
 complex map_16qam_type1 (int bit1, int bit2, int bit3, int bit4);
@@ -84,11 +91,11 @@ complex map_16qam_type1 (int bit1, int bit2, int bit3, int bit4);
 // 16QAMマッピング(Type2)
 complex map_16qam_type2 (int bit1, int bit2, int bit3, int bit4);
 
-// 16QAMマッピング(64QAM拡張)
-complex map_16qam_extend (int bit1, int bit2, int bit3, int bit4);
+// 下位ビット16QAMマッピング(64QAM対応)
+complex map_16qam_lsb (int bit1, int bit2, int bit3, int bit4);
 
-// 16QAMマッピング(256QAM拡張)
-complex map_16qam_extend2 (int bit1, int bit2, int bit3, int bit4);
+// 下位ビット16QAMマッピング(256QAM対応)
+complex map_16qam_lsb_extended (int bit1, int bit2, int bit3, int bit4);
 
 // 64QAMマッピング(Type1)
 complex map_64qam_type1 (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6);
@@ -96,8 +103,8 @@ complex map_64qam_type1 (int bit1, int bit2, int bit3, int bit4, int bit5, int b
 // 64QAMマッピング(Type2)
 complex map_64qam_type2 (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6);
 
-// 64QAMマッピング(256QAM拡張)
-complex map_64qam_extend (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6);
+// 下位ビット64QAMマッピング(256QAM対応)
+complex map_64qam_lsb (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6);
 
 // 256QAMマッピング
 complex map_256qam_type1 (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6, int bit7, int bit8);
@@ -127,15 +134,15 @@ void unmap_256qam_type1 (complex a, int *bits);
 void unmap_256qam_type2 (complex a, int *bits);
 
 // コンステレーションを初期化
-void construct_constellation (int num_qam, int type);
+void construct_constellation (complex *constellation, int num_qam, int type);
 
 void qam_modulation (int *c, complex *a, int n, int num_qam, int type);
 
 // トレリスシェイピングの変調
-void qam_modulation_extend (int *c, complex *a, int n, int num_qam);
+void qam_modulation_lsb (int *c, complex *a, int n, int num_qam);
 
 // トレリスシェイピングの変調
-void qam_modulation_extend2 (int *c, complex *a, int n, int num_qam);
+void qam_modulation_lsb_extended (int *c, complex *a, int n, int num_qam);
 
 // トレリスシェイピングの復調
 void qam_demodulation (complex *a, int *c, int n, int num_qam, int type);
@@ -159,13 +166,16 @@ void clipping (complex *x, int n, double r);
 void offset_attenuation (complex *x, int n, double r);
 
 // トレリスシェーピング
-void trellis_shaping (int *c, complex *a, int n, int num_qam);
+void trellis_shaping (int *c, complex *a, int n, int num_qam, int type);
 
 // トレリスシェーピング
 void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int num_qam);
 
 // トレリスシェーピング
-void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int num_qam);
+void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, int num_qam);
+
+// 平均電力を求める
+double calc_average_power(complex *a, int n);
 
 // PAPR(dB)を求める
 double calc_papr_db (complex *a, int n);

@@ -1,10 +1,10 @@
 ## .gitignore ##
 
 # ignore all
-*
-*/
+/*
 
 # allow any
 !.gitignore
 !*.c
 !*.h
+!*.sh

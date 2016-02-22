@@ -14,10 +14,6 @@ typedef _Complex double complex;
 #endif
 
 
-// 変調信号のテーブル
-complex *constellation;
-
-
 // ファイルオープン
 FILE *fsopen(const char *mode, const char *format, ...) {
   va_list list;
@@ -76,7 +72,7 @@ int count_be(int *x, int *y, int n) {
 
 
 // マッピング出力
-void print_map(FILE *fp, fftw_complex *x, int n) {
+void print_map(FILE *fp, complex *x, int n) {
     if (fp != NULL) {
         for (int i = 0; i < n; i++) {
             fprintf(fp, "%f %f\n", creal(x[i]), cimag(x[i]));
@@ -105,7 +101,7 @@ void copy_complex (complex *x, complex *x_copy, int n) {
 
 
 // インタリーバ
-void interleaver (int *x, int *y, int n) {
+void xor_addition (int *x, int *y, int n) {
     int i;
 
     for (i = 0; i < n; i++) {
@@ -157,28 +153,29 @@ void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n
 
 
 // 畳み込み符号化(拘束長3)
-void convolutional_coding (int *info, int *code, int info_length) {
+void convolutional_coding (int *u, int *c, int n) {
     int i;                              // ループカウンタ
     int register1, register2;           // シフトレジスタ
+
 
     // シフトレジスタを初期化
     register1 = 0;
     register2 = 0;
 
     // 畳み込み
-    for (i = 0; i < info_length; i++) {
-        code[2*i] = info[i] ^ register2;
-        code[2*i + 1] = info[i] ^ register1 ^ register2;
+    for (i = 0; i < n; i++) {
+        c[2*i] = u[i] ^ register2;
+        c[2*i+1] = u[i] ^ register1 ^ register2;
 
         // レジスタをシフト
         register2 = register1;
-        register1 = info[i];
+        register1 = u[i];
     }
 }
 
 
 // パリティ検査行列による復号(拘束長3)
-void parity_check_decoding (int *code, int *info, int info_length) {
+void parity_check_decoding (int *c, int *u, int n) {
     int i;                                                      // ループカウンタ
     int register11, register12, register21, register22;         // シフトレジスタ
 
@@ -189,20 +186,53 @@ void parity_check_decoding (int *code, int *info, int info_length) {
     register22 = 0;
 
     // 畳み込み
-    for (i = 0; i < info_length; i++) {
-        info[i] = code[2*i] ^ register11 ^ register12 ^ code[2*i + 1] ^ register22;
+    for (i = 0; i < n; i++) {
+        u[i] = c[2*i] ^ register11 ^ register12 ^ c[2*i+1] ^ register22;
 
         // レジスタをシフト
-        register12 = register11;
-        register11 = code[2*i];
         register22 = register21;
-        register21 = code[2*i + 1];
+        register21 = c[2*i+1];
+        register12 = register11;
+        register11 = c[2*i];
+    }
+}
+
+
+// パリティ検査行列による復号(拘束長3)
+void parallel_parity_check_decoding (int *c, int *u, int n) {
+    int i;                                                      // ループカウンタ
+    int register111, register112, register121, register122, register211, register212, register221, register222;         // シフトレジスタ
+
+    // シフトレジスタを初期化
+    register111 = 0;
+    register112 = 0;
+    register121 = 0;
+    register122 = 0;
+    register211 = 0;
+    register212 = 0;
+    register221 = 0;
+    register222 = 0;
+
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        u[2*i] = c[4*i] ^ register111 ^ register112 ^ c[4*i+1] ^ register122;
+        u[2*i+1] = c[4*i+2] ^ register211 ^ register212 ^ c[4*i+3] ^ register222;
+
+        // レジスタをシフト
+        register122 = register121;
+        register121 = c[4*i+1];
+        register112 = register111;
+        register111 = c[4*i];
+        register222 = register221;
+        register221 = c[4*i+3];
+        register212 = register211;
+        register211 = c[4*i+2];
     }
 }
 
 
 // パリティ検査行列の左逆行列による符号化(拘束長3)
-void inverse_parity_check_coding (int *info, int *code, int info_length) {
+void inverse_parity_check_coding (int *u, int *c, int n) {
     int i;                              // ループカウンタ
     int register1;                      // シフトレジスタ
 
@@ -210,18 +240,52 @@ void inverse_parity_check_coding (int *info, int *code, int info_length) {
     register1 = 0;
 
     // 畳み込み
-    for (i = 0; i < info_length; i++) {
-        code[2*i] = register1;
-        code[2*i + 1] = info[i] ^ register1;
+    for (i = 0; i < n; i++) {
+        c[2*i] = register1;
+        c[2*i+1] = u[i] ^ register1;
 
         // レジスタをシフト
-        register1 = info[i];
+        register1 = u[i];
     }
 }
 
 
-// QPSKマッピング(16QAM拡張)
-complex map_qpsk_extend (int bit1, int bit2) {
+// 並列パリティ検査行列の左逆行列による符号化(拘束長3)
+void parallel_inverse_parity_check_coding (int *u, int *c, int n) {
+    int i;                                  // ループカウンタ
+    int register1, register2;               // シフトレジスタ
+
+    // シフトレジスタを初期化
+    register1 = 0;
+    register2 = 0;
+
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        c[4*i] = register1;
+        c[4*i+1] = u[2*i] ^ register1;
+
+        c[4*i+2] = register2;
+        c[4*i+3] = u[2*i+1] ^ register2;
+
+        // レジスタをシフト
+        register1 = u[2*i];
+        register2 = u[2*i+1];
+    }
+}
+
+
+// 下位ビットZPSKマッピング(16QAM対応)
+complex map_zpsk_lsb_extended () {
+    complex a;                      // 変調信号
+
+    a = (complex)0.0;
+
+    return a;
+}
+
+
+// 下位ビットQPSKマッピング(16QAM対応)
+complex map_qpsk_lsb (int bit1, int bit2) {
     complex a;                      // 変調信号
 
     a = (2.0 - 4.0 * bit2) + I*(2.0 - 4.0 * bit1);
@@ -230,8 +294,8 @@ complex map_qpsk_extend (int bit1, int bit2) {
 }
 
 
-// QPSKマッピング(64QAM拡張)
-complex map_qpsk_extend2 (int bit1, int bit2) {
+// 下位ビットQPSKマッピング(64QAM対応)
+complex map_qpsk_lsb_extended (int bit1, int bit2) {
     complex a;                      // 変調信号
 
     a = (4.0 - 8.0 * bit2) + I*(4.0 - 8.0 * bit1);
@@ -267,11 +331,11 @@ complex map_16qam_type2 (int bit1, int bit2, int bit3, int bit4) {
 }
 
 
-// 16QAMマッピング(64QAM拡張)
-complex map_16qam_extend (int bit1, int bit2, int bit3, int bit4) {
+// 下位ビット16QAMマッピング(64QAM対応)
+complex map_16qam_lsb (int bit1, int bit2, int bit3, int bit4) {
     complex a;                      // 変調信号
 
-    a = map_qpsk_extend(bit3, bit4);
+    a = map_qpsk_lsb(bit3, bit4);
     a += 4.0 + I*4.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -284,11 +348,11 @@ complex map_16qam_extend (int bit1, int bit2, int bit3, int bit4) {
 }
 
 
-// 16QAMマッピング(256QAM拡張)
-complex map_16qam_extend2 (int bit1, int bit2, int bit3, int bit4) {
+// 下位ビット16QAMマッピング(256QAM対応)
+complex map_16qam_lsb_extended (int bit1, int bit2, int bit3, int bit4) {
     complex a;                      // 変調信号
 
-    a = map_qpsk_extend(bit3, bit4);
+    a = map_qpsk_lsb_extended(bit3, bit4);
     a += 8.0 + I*8.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -329,11 +393,11 @@ complex map_64qam_type2 (int bit1, int bit2, int bit3, int bit4, int bit5, int b
 }
 
 
-// 64QAMマッピング(256QAM拡張)
-complex map_64qam_extend (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6) {
+// 下位ビット64QAMマッピング(256QAM対応)
+complex map_64qam_lsb (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6) {
     complex a;                      // 変調信号
 
-    a = map_16qam_extend(bit3, bit4, bit5, bit6);
+    a = map_16qam_lsb(bit3, bit4, bit5, bit6);
     a += 8.0 + I*8.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -562,14 +626,11 @@ void unmap_256qam_type2 (complex a, int *bits) {
 
 
 // コンステレーションを初期化
-void construct_constellation (int num_qam, int type) {
-    int h, i, j, k, l, m, n, o;                             // ループカウンタ
-
-    // メモリの確保
-    constellation = (complex *)malloc(num_qam * sizeof(complex));
+void construct_constellation (complex *constellation, int m, int type) {
+    int a, b, c, d, e, f, g, h;                             // ループカウンタ
 
     // QAM値のチェック
-    if (num_qam != 16 && num_qam != 64 && num_qam != 256) {
+    if (m != 16 && m != 64 && m != 256) {
         printf("Invalid number of constellation.\n");
         exit(-1);
     }
@@ -580,33 +641,33 @@ void construct_constellation (int num_qam, int type) {
         exit(-1);
     }
 
-    for (h = 0; h < 2; h++) {
-        for (i = 0; i < 2; i++) {
-            for (j = 0; j < 2; j++) {
-                for (k = 0; k < 2; k++) {
-                    if (num_qam == 16) {
+    for (a = 0; a < 2; a++) {
+        for (b = 0; b < 2; b++) {
+            for (c = 0; c < 2; c++) {
+                for (d = 0; d < 2; d++) {
+                    if (m == 16) {
                         if (type == 1) {
-                            constellation[8*h + 4*i + 2*j + k] = map_16qam_type1(h, i, j, k);
+                            constellation[8*a + 4*b + 2*c + d] = map_16qam_type1(a, b, c, d);
                         } else {
-                            constellation[8*h + 4*i + 2*j + k] = map_16qam_type2(h, i, j, k);
+                            constellation[8*a + 4*b + 2*c + d] = map_16qam_type2(a, b, c, d);
                         }
                     } else {
-                        for (l = 0; l < 2; l++) {
-                            for (m = 0; m < 2; m++) {
-                                if (num_qam == 64) {
+                        for (e = 0; e < 2; e++) {
+                            for (f = 0; f < 2; f++) {
+                                if (m == 64) {
                                     if (type == 1) {
-                                        constellation[32*h + 16*i + 8*j + 4*k + 2*l + m] = map_64qam_type1(h, i, j, k, l, m);
+                                        constellation[32*a + 16*b + 8*c + 4*d + 2*e + f] = map_64qam_type1(a, b, c, d, e, f);
                                     } else {
-                                        constellation[32*h + 16*i + 8*j + 4*k + 2*l + m] = map_64qam_type2(h, i, j, k, l, m);
+                                        constellation[32*a + 16*b + 8*c + 4*d + 2*e + f] = map_64qam_type2(a, b, c, d, e, f);
                                     }
                                 } else {
-                                    for (n = 0; n < 2; n++) {
-                                        for (o = 0; o < 2; o++) {
-                                            if (num_qam == 256) {
+                                    for (g = 0; g < 2; g++) {
+                                        for (h = 0; h < 2; h++) {
+                                            if (m == 256) {
                                                 if (type == 1) {
-                                                    constellation[128*h + 64*i + 32*j + 16*k + 8*l + 4*m + 2*n + o] = map_256qam_type1(h, i, j, k, l, m, n, o);
+                                                    constellation[128*a + 64*b + 32*c + 16*d + 8*e + 4*f + 2*g + h] = map_256qam_type1(a, b, c, d, e, f, g, h);
                                                 } else {
-                                                    constellation[128*h + 64*i + 32*j + 16*k + 8*l + 4*m + 2*n + o] = map_256qam_type2(h, i, j, k, l, m, n, o);
+                                                    constellation[128*a + 64*b + 32*c + 16*d + 8*e + 4*f + 2*g + h] = map_256qam_type2(a, b, c, d, e, f, g, h);
                                                 }
                                             }
                                         }
@@ -624,9 +685,9 @@ void construct_constellation (int num_qam, int type) {
 
 
 // トレリスシェイピングの変調
-void qam_modulation (int *c, complex *a, int n, int num_qam, int type) {
+void qam_modulation (int *c, complex *a, int n, int m, int type) {
     // コンステレーション数のチェック
-    if (num_qam != 16 && num_qam != 64 && num_qam != 256) {
+    if (m != 16 && m != 64 && m != 256) {
         printf("Invalid number of constellation.\n");
         exit(-1);
     }
@@ -638,19 +699,19 @@ void qam_modulation (int *c, complex *a, int n, int num_qam, int type) {
     }
 
     for (int i = 0; i < n; i++) {
-        if (num_qam == 16) {
+        if (m == 16) {
             if (type == 1) {
                 a[i] = map_16qam_type1(c[4*i], c[4*i+1], c[4*i+2], c[4*i+3]);
             } else {
                 a[i] = map_16qam_type2(c[4*i], c[4*i+1], c[4*i+2], c[4*i+3]);
             }
-        } else if (num_qam == 64) {
+        } else if (m == 64) {
             if (type == 1) {
                 a[i] = map_64qam_type1(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3], c[6*i+4], c[6*i+5]);
             } else {
                 a[i] = map_64qam_type2(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3], c[6*i+4], c[6*i+5]);
             }
-        } else if (num_qam == 256) {
+        } else if (m == 256) {
             if (type == 1) {
                 a[i] = map_256qam_type1(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3], c[8*i+4], c[8*i+5], c[8*i+6], c[8*i+7]);
             } else {
@@ -662,53 +723,55 @@ void qam_modulation (int *c, complex *a, int n, int num_qam, int type) {
 
 
 // トレリスシェイピングの変調
-void qam_modulation_extend (int *c, complex *a, int n, int num_qam) {
+void qam_modulation_lsb (int *c, complex *a, int n, int m) {
     // コンステレーション数のチェック
-    if (num_qam != 16 && num_qam != 64 && num_qam != 256) {
+    if (m != 16 && m != 64 && m != 256) {
         printf("Invalid number of constellation.\n");
         exit(-1);
     }
 
     for (int i = 0; i < n; i++) {
-        if (num_qam == 16) {
-            a[i] = map_qpsk_extend(c[4*i], c[4*i+1]);
-        } else if (num_qam == 64) {
-            a[i] = map_16qam_extend(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3]);
-        } else if (num_qam == 256) {
-            a[i] = map_64qam_extend(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3], c[8*i+4], c[8*i+5]);
+        if (m == 16) {
+            a[i] = map_qpsk_lsb(c[4*i], c[4*i+1]);
+        } else if (m == 64) {
+            a[i] = map_16qam_lsb(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3]);
+        } else if (m == 256) {
+            a[i] = map_64qam_lsb(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3], c[8*i+4], c[8*i+5]);
         }
     }
 }
 
 
 // トレリスシェイピングの変調
-void qam_modulation_extend2 (int *c, complex *a, int n, int num_qam) {
+void qam_modulation_lsb_extended (int *c, complex *a, int n, int m) {
     // コンステレーション数のチェック
-    if (num_qam != 64 && num_qam != 256) {
+    if (m != 16 && m != 64 && m != 256) {
         printf("Invalid number of constellation.\n");
         exit(-1);
     }
 
     for (int i = 0; i < n; i++) {
-        if (num_qam == 64) {
-            a[i] = map_qpsk_extend2(c[6*i], c[6*i+1]);
-        } else if (num_qam == 256) {
-            a[i] = map_16qam_extend2(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3]);
+        if (m == 16) {
+            a[i] = map_zpsk_lsb_extended();
+        } else if (m == 64) {
+            a[i] = map_qpsk_lsb_extended(c[6*i], c[6*i+1]);
+        } else if (m == 256) {
+            a[i] = map_16qam_lsb_extended(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3]);
         }
     }
 }
 
 
 // トレリスシェイピングの復調
-void qam_demodulation (complex *a, int *c, int n, int num_qam, int type) {
-    const int num_bit = (int)log2(num_qam);             // ビット数
+void qam_demodulation (complex *a, int *c, int n, int m, int type) {
+    const int num_bit = (int)log2(m);             // ビット数
     static int *bits;                                   // ビット列
     static int memory_flag;                             // メモリ管理フラグ
     int i;                                              // ループカウンタ
 
     if (memory_flag == 0) {
         // コンステレーション数のチェック
-        if (num_qam != 16 && num_qam != 64 && num_qam != 256) {
+        if (m != 16 && m != 64 && m != 256) {
             printf("Invalid number of constellation.\n");
             exit(-1);
         }
@@ -728,19 +791,19 @@ void qam_demodulation (complex *a, int *c, int n, int num_qam, int type) {
 
     // 復調
     for (i = 0; i < n; i++) {
-        if (num_qam == 16) {
+        if (m == 16) {
             if (type == 1) {
                 unmap_16qam_type1(a[i], c + i * num_bit);
             } else {
                 unmap_16qam_type2(a[i], c + i * num_bit);
             }
-        } else if (num_qam == 64) {
+        } else if (m == 64) {
             if (type == 1) {
                 unmap_64qam_type1(a[i], c + i * num_bit);
             } else {
                 unmap_64qam_type2(a[i], c + i * num_bit);
             }
-        } else if (num_qam == 256) {
+        } else if (m == 256) {
             if (type == 1) {
                 unmap_256qam_type1(a[i], c + i * num_bit);
             } else {
@@ -788,7 +851,7 @@ void ifft (int n, fftw_complex *in, fftw_complex *out) {
 
 
 // オーバーサンプリング
-void over_sampling (complex *x, fftw_complex *y, int j, int n) {
+void over_sampling (complex *x, complex *y, int j, int n) {
     int i;                      // ループカウンタ
     const int m = j*n;          // yの配列数
 
@@ -800,20 +863,20 @@ void over_sampling (complex *x, fftw_complex *y, int j, int n) {
     // xの半分に分けて入れる
     for (i = 0; i < n/2; i++) {
         y[i] = x[n/2 + i];
-        y[m-1 - i] = x[i];
+        y[m - n/2 + i] = x[i];
     }
 }
 
 
 // ダウンサンプリング
-void down_sampling (fftw_complex *x, complex *y, int j, int n) {
+void down_sampling (complex *y, complex *x, int j, int n) {
     int i;                      // ループカウンタ
     const int m = j*n;          // yの配列数
 
     // xの半分に分けて入れる
     for (i = 0; i < n/2; i++) {
-        y[i] = x[m-1 - i];
-        y[n/2 + i] = x[i];
+        x[n/2 + i] = y[i];
+        x[i] = y[m - n/2 + i];
     }
 }
 
@@ -853,55 +916,55 @@ void offset_attenuation (complex *x, int n, double r) {
 
 
 // トレリスシェーピング
-void trellis_shaping (int *c, complex *a, int n, int num_qam) {
+void trellis_shaping (int *c, complex *a, int n, int m, int type) {
     const int num_state = 4;                                                            // 状態数
-    const int next_state[4][2] = {{0,1}, {2,3}, {0,1}, {2,3}};                          // 次状態
-    const int output1[4][2] = {{0,1}, {0,1}, {1,0}, {1,0}};                             // 1ビット目の出力
-    const int output2[4][2] = {{0,1}, {1,0}, {1,0}, {0,1}};                             // 2ビット目の出力
-    const double infty = (double)n * 1000000000;                                        // 無限
+    const int num_trans = 2;                                                            // 遷移数
+    const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
+    const int output1[num_state][num_trans] = {{0,1}, {0,1}, {1,0}, {1,0}};             // 1ビット目の出力
+    const int output2[num_state][num_trans] = {{0,1}, {1,0}, {1,0}, {0,1}};             // 2ビット目の出力
+    const double infty = (double)n * 10000000;                                          // 無限
     double branch_metric;                                                               // ブランチメトリック
     int likely_state;                                                                   // トレースバックの最尤状態
-    static complex **delta_table1, *delta_table1_base;                                  // δテーブル
-    static complex **delta_table2, *delta_table2_base;                                  // |δ^2|テーブル
-    static node **nodes, *nodes_base;                                                   // ノード
-    static int *a_index_base;                                                           // 変調信号のメモリ
-    static complex *autocor_base;                                                       // 相関関数のメモリ
+    int tmp_index;                                                                      // 合成した信号
+    static complex *constellation;                                                      // 変調信号のテーブル
+    static complex **delta_table1;                                                      // δテーブル
+    static double **delta_table2;                                                       // |δ^2|テーブル
+    static node **nodes;                                                                // ノード
     static int memory_flag;                                                             // メモリ管理フラグ
-    int i, j, k, m;                                                                     // ループカウンタ
-
+    int sub, state, input;                                                              // ループカウンタ
+    int i, j, l;                                                                        // ループカウンタ
 
     if (memory_flag == 0) {
         // コンステレーション数のチェック
-        if (num_qam != 16 && num_qam != 64 && num_qam != 256) {
+        if (m != 16 && m != 64 && m != 256) {
             printf("Invalid number of constellation.\n");
             exit(-1);
         }
 
         // メモリの確保
+        constellation = (complex *)malloc(m * sizeof(complex));
         nodes = (node **)malloc((n+1) * sizeof(node *));
-        nodes_base = (node *)malloc((n+1) * num_state * sizeof(node));
-        a_index_base = (int *)malloc((n+1) * num_state * n * sizeof(int));
-        autocor_base = (complex *)malloc((n+1) * num_state * n * sizeof(complex));
-        delta_table1 = (complex **)malloc(num_qam * sizeof(complex *));
-        delta_table2 = (complex **)malloc(num_qam * sizeof(complex *));
-        delta_table1_base = (complex *)malloc(num_qam * num_qam * sizeof(complex));
-        delta_table2_base = (complex *)malloc(num_qam * num_qam * sizeof(complex));
+        delta_table1 = (complex **)malloc(m * sizeof(complex *));
+        delta_table2 = (double **)malloc(m * sizeof(double *));
 
         for (i = 0; i <= n; i++) {
-            nodes[i] = nodes_base + i * num_state;
+            nodes[i] = (node *)malloc(num_state * sizeof(node));
             for (j = 0; j < num_state; j++) {
-                nodes[i][j].a_index = a_index_base + (i * num_state + j) * n;
-                nodes[i][j].autocor = autocor_base + (i * num_state + j) * n;
+                nodes[i][j].a_index = (int *)malloc(n * sizeof(int));
+                nodes[i][j].autocor = (complex *)malloc(n * sizeof(complex));
             }
         }
-        for (i = 0; i < num_qam; i++) {
-            delta_table1[i] = delta_table1_base + i * num_qam;
-            delta_table2[i] = delta_table2_base + i * num_qam;
+        for (i = 0; i < m; i++) {
+            delta_table1[i] = (complex *)malloc(m * sizeof(complex));
+            delta_table2[i] = (double *)malloc(m * sizeof(double));
         }
 
+        // 信号点配置を初期化
+        construct_constellation(constellation, m, type);
+
         // δのテーブルを用意する
-        for (i = 0; i < num_qam; i++) {
-            for (j = 0; j < num_qam; j++) {
+        for (i = 0; i < m; i++) {
+            for (j = 0; j < m; j++) {
                 delta_table1[i][j] = constellation[i] * conj(constellation[j]);
                 delta_table2[i][j] = pow(cabs(delta_table1[i][j]), 2.0);
             }
@@ -911,81 +974,80 @@ void trellis_shaping (int *c, complex *a, int n, int num_qam) {
         memory_flag = 1;
     }
 
-    // 最初のノードメトリックを初期化
-    nodes[0][0].metric = 0;
-    for (j = 1; j < num_state; j++) {
-        nodes[0][j].metric = infty;
-    }
-
-    // 適当に埋めておく
-    nodes[1][2].a_index[0] = 0;
-    nodes[1][3].a_index[0] = 0;
-
-    // ビタビアルゴリズム開始
-    for (i = 1; i <= n; i++) {
-        // ノードメトリックを初期化
+    // 初期化
+    for (i = 0; i <= n; i++) {
         for (j = 0; j < num_state; j++) {
             nodes[i][j].metric = infty;
         }
+    }
+    nodes[0][0].metric = 0.0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // サブキャリアの位置
+        sub = i - 1;
 
         // ノードメトリックの計算
-        for (j = 0; j < num_state; j++) {
-            for (k = 0; k < 2; k++) {
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
                 // 仮の変調信号を求める
-                if (num_qam == 16) {
-                    nodes[i-1][j].a_index[i-1] = 8*(c[4*(i-1)] ^ output1[j][k]) + 4*(c[4*(i-1)+1] ^ output2[j][k]) + 2*c[4*(i-1)+3] + c[4*(i-1)+4];
-                } else if (num_qam == 64) {
-                    nodes[i-1][j].a_index[i-1] = 32*(c[6*(i-1)] ^ output1[j][k]) + 16*(c[6*(i-1)+1] ^ output2[j][k]) + 8*c[6*(i-1)+2] + 4*c[6*(i-1)+3] + 2*c[6*(i-1)+4] + c[6*(i-1)+5];
-                } else if (num_qam == 256){
-                    nodes[i-1][j].a_index[i-1] = 128*(c[8*(i-1)] ^ output1[j][k]) + 64*(c[8*(i-1)+1] ^ output2[j][k]) + 32*c[8*(i-1)+2] + 16*c[8*(i-1)+3] + 8*c[8*(i-1)+4] + 4*c[8*(i-1)+5] + 2*c[8*(i-1)+6] + c[8*(i-1)+7];
+                if (m == 16) {
+                    tmp_index = ((c[4*sub] ^ output1[state][input]) << 3) + ((c[4*sub+1] ^ output2[state][input]) << 2) + (c[4*sub+2] << 1) + c[4*sub+3];
+                } else if (m == 64) {
+                    tmp_index = ((c[6*sub] ^ output1[state][input]) << 5) + ((c[6*sub+1] ^ output2[state][input]) << 4) + (c[6*sub+2] << 3) + (c[6*sub+3] << 2) + (c[6*sub+4] << 1) + c[6*sub+5];
+                } else if (m == 256){
+                    tmp_index = ((c[8*sub] ^ output1[state][input]) << 7) + ((c[8*sub+1] ^ output2[state][input]) << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + (c[8*sub+4] << 3) + (c[8*sub+5] << 2) + (c[8*sub+6] << 1) + c[8*sub+7];
                 }
 
                 // ブランチメトリックを求める
                 branch_metric = 0;
 
                 // 第2項
-                for (m = 1; m <= i-2; m++) {
-                    branch_metric += 2.0 * creal(conj(nodes[i-1][j].autocor[m]) * delta_table1[nodes[i-1][j].a_index[i-1]][nodes[i-1][j].a_index[i-1-m]]);
-
+                for (l = 1; l <= i-2; l++) {
+                    branch_metric += 2.0 * creal(conj(nodes[i-1][state].autocor[l]) * delta_table1[tmp_index][nodes[i-1][state].a_index[i-1-l]]);
                 }
 
                 // 第3項
-                for (m = 1; m <= i-1; m++) {
-                    branch_metric +=  delta_table2[nodes[i-1][j].a_index[i-1]][nodes[i-1][j].a_index[i-1-m]];
+                for (l = 1; l <= i-1; l++) {
+                    branch_metric +=  delta_table2[tmp_index][nodes[i-1][state].a_index[i-1-l]];
                 }
 
                 // パスの選択
-                if (nodes[i-1][j].metric + branch_metric < nodes[i][next_state[j][k]].metric) {
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
                     // メトリックの更新
-                    nodes[i][next_state[j][k]].metric = nodes[i-1][j].metric + branch_metric;
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
 
                     // 前状態を保存
-                    nodes[i][next_state[j][k]].pre_state = j;
-                    nodes[i][next_state[j][k]].a_index[i-1] = nodes[i-1][j].a_index[i-1];
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[i-1] = tmp_index;
                 }
             }
         }
 
         // 次状態に情報を渡す
-        for (j = 0; j < num_state; j++) {
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
             // 変調信号を更新する
-            for (m = 0; m <= i-2; m++) {
-                nodes[i][j].a_index[m] = nodes[i-1][nodes[i][j].pre_state].a_index[m];
+            for (l = 0; l <= i-2; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
             }
 
-            // 自己相関関数を更新する
-            for (m = 1; m <= i-2; m++) {
-                nodes[i][j].autocor[m] = nodes[i-1][nodes[i][j].pre_state].autocor[m] + delta_table1[nodes[i][j].a_index[i-1]][nodes[i][j].a_index[i-1-m]];
+            // 自己相関を更新する
+            for (l = 1; l <= i-2; l++) {
+                nodes[i][state].autocor[l] = nodes[i-1][nodes[i][state].pre_state].autocor[l] + delta_table1[nodes[i][state].a_index[i-1]][nodes[i][state].a_index[i-1-l]];
             }
-            nodes[i][j].autocor[i-1] = delta_table1[nodes[i][j].a_index[i-1]][nodes[i][j].a_index[0]];
+            nodes[i][state].autocor[i-1] = delta_table1[nodes[i][state].a_index[i-1]][nodes[i][state].a_index[0]];
         }
     }
 
     // 最尤の最終状態を見つける
     likely_state = 0;
-    for (j = 0; j < num_state; j++) {
-        if (nodes[n][j].metric < nodes[n][likely_state].metric) {
-            likely_state = j;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
         }
     }
 
@@ -997,95 +1059,105 @@ void trellis_shaping (int *c, complex *a, int n, int num_qam) {
 
 
 // トレリスシェーピング
-void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int num_qam) {
-    const int num_state = 4;                                                        // 状態数
-    const int next_state[4][2] = {{0,1}, {2,3}, {0,1}, {2,3}};                      // 次状態
-    const int output1[4][2] = {{0,1}, {0,1}, {1,0}, {1,0}};                         // 1ビット目の出力
-    const int output2[4][2] = {{0,1}, {1,0}, {1,0}, {0,1}};                         // 2ビット目の出力
-    const double infty = (double)n * 1000000000;                                    // 無限
-    double branch_metric;                                                           // ブランチメトリック
-    int likely_state;                                                               // トレースバックの最尤状態
-    static node **nodes, *nodes_base;                                               // ノード
-    static int *a_index_base;                                                       // 変調信号のメモリ
-    static complex *autocor_base;                                                   // 相関関数のメモリ
-    static int memory_flag;                                                         // メモリ管理フラグ
-    int i, j, k, m;                                                                 // ループカウンタ
+void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
+    const int num_state = 4;                                                            // 状態数
+    const int num_trans = 2;                                                            // 遷移数
+    const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
+    const int output1[num_state][num_trans] = {{0,1}, {0,1}, {1,0}, {1,0}};             // 1ビット目の出力
+    const int output2[num_state][num_trans] = {{0,1}, {1,0}, {1,0}, {0,1}};             // 2ビット目の出力
+    const double infty = (double)n * 10000000;                                          // 無限
+    int tmp_index;                                                                      // 合成した信号
+    double branch_metric;                                                               // ブランチメトリック
+    int likely_state;                                                                   // トレースバックの最尤状態
+    static complex *constellation;                                                      // 変調信号のテーブル
+    static node **nodes;                                                                // ノード
+    static int memory_flag;                                                             // メモリ管理フラグ
+    int sub, state, input;                                                              // ループカウンタ
+    int i, j, l;                                                                        // ループカウンタ
 
-    // メモリの確保
     if (memory_flag == 0) {
+        // コンステレーション数のチェック
+        if (m != 16 && m != 64 && m != 256) {
+            printf("Invalid number of constellation.\n");
+            exit(-1);
+        }
+
+        // メモリの確保
+        constellation = (complex *)malloc(m * sizeof(complex));
         nodes = (node **)malloc((n+1) * sizeof(node *));
-        nodes_base = (node *)malloc((n+1) * num_state * sizeof(node));
-        a_index_base = (int *)malloc((n+1) * num_state * n * sizeof(int));
-        autocor_base = (complex *)malloc((n+1) * num_state * n * sizeof(complex));
 
         for (i = 0; i <= n; i++) {
-            nodes[i] = nodes_base + i * num_state;
+            nodes[i] = (node *)malloc(num_state * sizeof(node));
             for (j = 0; j < num_state; j++) {
-                nodes[i][j].a_index = a_index_base + (i * num_state + j) * n;
-                nodes[i][j].autocor = autocor_base + (i * num_state + j) * n;
+                nodes[i][j].a_index = (int *)malloc(n * sizeof(int));
             }
         }
+
+        // 信号点配置を初期化
+        construct_constellation(constellation, m, 1);
 
         // フラグをチェック
         memory_flag = 1;
     }
 
-    // 最初のノードメトリックを初期化
-    nodes[0][0].metric = 0;
-    for (j = 1; j < num_state; j++) {
-        nodes[0][j].metric = infty;
-    }
-
-    // ビタビアルゴリズム開始
-    for (i = 1; i <= n; i++) {
-        // ノードメトリックを初期化
+    // 初期化
+    for (i = 0; i <= n; i++) {
         for (j = 0; j < num_state; j++) {
             nodes[i][j].metric = infty;
         }
+    }
+    nodes[0][0].metric = 0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // 決定される信号位置
+        sub = i - 1;
 
         // ノードメトリックの計算
-        for (j = 0; j < num_state; j++) {
-            for (k = 0; k < 2; k++) {
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
                 // 仮の変調信号を求める
-                if (num_qam == 16) {
-                    nodes[i-1][j].a_index[i-1] = 8*c[4*(i-1)] + 4*c[4*(i-1)+1] + 2*(c[4*(i-1)+2] ^ output1[j][k]) + (c[4*(i-1)+3] ^ output2[j][k]);
-                } else if (num_qam == 64) {
-                    nodes[i-1][j].a_index[i-1] = 32*c[6*(i-1)] + 16*c[6*(i-1)+1] + 8*c[6*(i-1)+2] + 4*c[6*(i-1)+3] + 2*(c[6*(i-1)+4] ^ output1[j][k]) + (c[6*(i-1)+5] ^ output2[j][k]);
-                } else if (num_qam == 256) {
-                    nodes[i-1][j].a_index[i-1] = 128*c[8*(i-1)] + 64*c[8*(i-1)+1] + 32*c[8*(i-1)+2] + 16*c[8*(i-1)+3] + 8*c[8*(i-1)+4] + 4*c[8*(i-1)+5] + 2*(c[8*(i-1)+6] ^ output1[j][k]) + (c[8*(i-1)+7] ^ output2[j][k]);
+                if (m == 16) {
+                    tmp_index = (c[4*sub] << 3) + (c[4*sub+1] << 2) + ((c[4*sub+2] ^ output1[state][input]) << 1) + (c[4*sub+3] ^ output2[state][input]);
+                } else if (m == 64) {
+                    tmp_index = (c[6*sub] << 5) + (c[6*sub+1] << 4) + (c[6*sub+2] << 3) + (c[6*sub+3] << 2) + ((c[6*sub+4] ^ output1[state][input]) << 1) + (c[6*sub+5] ^ output2[state][input]);
+                } else if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + (c[8*sub+4] << 3) + (c[8*sub+5] << 2) + ((c[8*sub+6] ^ output1[state][input]) << 1) + (c[8*sub+7] ^ output2[state][input]);
                 }
 
                 // ブランチメトリックを求める
-                if (i > 1) {
-                    branch_metric = pow(cabs(a_caf[i-1] - constellation[nodes[i-1][j].a_index[i-1]]), 2.0);
-                }
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
 
                 // パスの選択
-                if (nodes[i-1][j].metric + branch_metric < nodes[i][next_state[j][k]].metric) {
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
                     // メトリックの更新
-                    nodes[i][next_state[j][k]].metric = nodes[i-1][j].metric + branch_metric;
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
 
                     // 前状態を保存
-                    nodes[i][next_state[j][k]].pre_state = j;
-                    nodes[i][next_state[j][k]].a_index[i-1] = nodes[i-1][j].a_index[i-1];
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
                 }
             }
         }
 
         // 次状態に情報を渡す
-        for (j = 0; j < num_state; j++) {
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
             // 変調信号を更新する
-            for (m = 0; m <= i-2; m++) {
-                nodes[i][j].a_index[m] = nodes[i-1][nodes[i][j].pre_state].a_index[m];
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
             }
         }
     }
 
     // 最尤の最終状態を見つける
     likely_state = 0;
-    for (j = 0; j < num_state; j++) {
-        if (nodes[n][j].metric < nodes[n][likely_state].metric) {
-            likely_state = j;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
         }
     }
 
@@ -1097,107 +1169,105 @@ void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int num_qam
 
 
 // トレリスシェーピング
-void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int num_qam) {
-    const int num_state = 4;                                                        // 状態数
-    const int num_trans = 2;                                                        // 遷移数
-    const int next_state[16][4] = {{0,1,4,5}, {2,3,6,7}, {0,1,4,5}, {2,3,6,7}, {8,9,12,13}, {10,11,14,15}, {8,9,12,13}, {10,11,14,15}, {0,1,4,5}, {2,3,6,7}, {0,1,4,5}, {2,3,6,7}, {8,9,12,13}, {10,11,14,15}, {8,9,12,13}, {10,11,14,15}};                      // 次状態
-    const int output1[4][2] = {{0,1}, {0,1}, {1,0}, {1,0}};                         // 1ビット目の出力
-    const int output2[4][2] = {{0,1}, {1,0}, {1,0}, {0,1}};                         // 2ビット目の出力
-    const double infty = (double)n * 1000000000;                                    // 無限
-    double branch_metric;                                                           // ブランチメトリック
-    int likely_state;                                                               // トレースバックの最尤状態
-    static node **nodes, *nodes_base;                                               // ノード
-    static int *a_index_base;                                                       // 変調信号のメモリ
-    static complex *autocor_base;                                                   // 相関関数のメモリ
-    static int memory_flag;                                                         // メモリ管理フラグ
-    int i, j1, j2, k1, k2, m;                                                       // ループカウンタ
+void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, int m) {
+    const int num_state = 4;                                                            // 状態数
+    const int num_trans = 2;                                                            // 遷移数
+    const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
+    const int output1[num_state][num_trans] = {{0,1}, {0,1}, {1,0}, {1,0}};             // 1ビット目の出力
+    const int output2[num_state][num_trans] = {{0,1}, {1,0}, {1,0}, {0,1}};             // 2ビット目の出力
+    const double infty = (double)n * 10000000;                                          // 無限
+    int tmp_index;                                                                      // 合成した信号
+    double branch_metric;                                                               // ブランチメトリック
+    int likely_state;                                                                   // トレースバックの最尤状態
+    static complex *constellation;                                                      // 変調信号のテーブル
+    static node **nodes;                                                                // ノード
+    static int memory_flag;                                                             // メモリ管理フラグ
+    int sub, state, input;                                                              // ループカウンタ
+    int i, j, l;                                                                        // ループカウンタ
 
-    // メモリの確保
     if (memory_flag == 0) {
+        // コンステレーション数のチェック
+        if (m != 16 && m != 64 && m != 256) {
+            printf("Invalid number of constellation.\n");
+            exit(-1);
+        }
+
+        // メモリの確保
+        constellation = (complex *)malloc(m * sizeof(complex));
         nodes = (node **)malloc((n+1) * sizeof(node *));
-        nodes_base = (node *)malloc((n+1) * num_state * sizeof(node));
-        a_index_base = (int *)malloc((n+1) * num_state * num_state * n * sizeof(int));
-        autocor_base = (complex *)malloc((n+1) * num_state * num_state * n * sizeof(complex));
+
         for (i = 0; i <= n; i++) {
-            nodes[i] = nodes_base + i * num_state * num_state;
-            for (j1 = 0; j1 < num_state; j1++) {
-                for (j2 = 0; j2 < num_state; j2++) {
-                    nodes[i][j1 * num_state + j2].a_index = a_index_base + (i * num_state * num_state + j1 * num_state + j2) * n;
-                    nodes[i][j1 * num_state + j2].autocor = autocor_base + (i * num_state * num_state + j1 * num_state + j2) * n;
-                }
+            nodes[i] = (node *)malloc(num_state * sizeof(node));
+            for (j = 0; j < num_state; j++) {
+                nodes[i][j].a_index = (int *)malloc(n * sizeof(int));
             }
         }
+
+        // 信号点配置を初期化
+        construct_constellation(constellation, m, 1);
 
         // フラグをチェック
         memory_flag = 1;
     }
 
-    // 最初のノードメトリックを初期化
-    for (j1 = 0; j1 < num_state; j1++) {
-        for (j2 = 0; j2 < num_state; j1++) {
-            nodes[0][num_state * j1 + j2].metric = infty;
+    // 初期化
+    for (i = 0; i <= n; i++) {
+        for (j = 0; j < num_state; j++) {
+            nodes[i][j].metric = infty;
         }
     }
     nodes[0][0].metric = 0;
 
     // ビタビアルゴリズム開始
     for (i = 1; i <= n; i++) {
-        // ノードメトリックを初期化
-        for (j1 = 0; j1 < num_state; j1++) {
-            for (j2 = 0; j2 < num_state; j2++) {
-                nodes[i][num_state * j1 + j2].metric = infty;
-            }
-        }
+        // 決定される信号位置
+        sub = i - 1;
 
         // ノードメトリックの計算
-        for (j1 = 0; j1 < num_state; j1++) {
-            for (j2 = 0; j2 < num_state; j2++) {
-                for (k1 = 0; k1 < num_trans; k1++) {
-                    for (k2 = 0; k2 < num_trans; k2++) {
-                        // 仮の変調信号を求める
-                        if (num_qam == 64) {
-                            nodes[i-1][num_state * j1 + j2].a_index[i-1] = 32*c[6*(i-1)] + 16*c[6*(i-1)+1] + 8*(c[6*(i-1)+2] ^ output1[j1][k1]) + 4*(c[6*(i-1)+3] ^ output2[j1][k1]) + 2*(c[6*(i-1)+4] ^ output1[j2][k2]) + (c[4*(i-1)+5] ^ output2[j2][k2]);
-                        } else if (num_qam == 256) {
-                            nodes[i-1][num_state * j1 + j2].a_index[i-1] = 128*c[8*(i-1)] + 64*c[8*(i-1)+1] + 32*c[8*(i-1)+2] + 16*c[8*(i-1)+3] + 8*(c[8*(i-1)+4] ^ output1[j1][k1]) + 4*(c[8*(i-1)+5] ^ output2[j1][k1]) + 2*(c[8*(i-1)+6] ^ output1[j2][k2]) + (c[8*(i-1)+7] ^ output2[j2][k2]);
-                        }
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
 
-                        // ブランチメトリックを求める
-                        if (i > 1) {
-                            branch_metric = pow(cabs(a_caf[i-1] - constellation[nodes[i-1][num_state * j1 + j2].a_index[i-1]]), 2.0);
-                        }
+            for (input = 0; input < num_trans; input++) {
+                // 仮の変調信号を求める
+                if (m == 16) {
+                    tmp_index = (((c[4*sub] ^ output1[state][input]) << 3) + ((c[4*sub+1] ^ output2[state][input]) << 2) + (c[4*sub+2] << 1) + c[4*sub+3]);
+                } else if (m == 64) {
+                    tmp_index = (c[6*sub] << 5) + (c[6*sub+1] << 4) + ((c[6*sub+2] ^ output1[state][input]) << 3) + ((c[6*sub+3] ^ output2[state][input]) << 2) + (c[6*sub+4] << 1) + c[6*sub+5];
+                } else if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + ((c[8*sub+4] ^ output1[state][input]) << 3) + ((c[8*sub+5] ^ output2[state][input]) << 2) + (c[8*sub+6] << 1) + c[8*sub+7];
+                }
 
-                        // パスの選択
-                        if (nodes[i-1][num_state * j1 + j2].metric + branch_metric < nodes[i][next_state[num_state * j1 + j2][num_trans * k1 + k2]].metric) {
-                            // メトリックの更新
-                            nodes[i][next_state[num_state * j1 + j2][num_trans * k1 + k2]].metric = nodes[i-1][num_state * j1 + j2].metric + branch_metric;
+                // ブランチメトリックを求める
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
 
-                            // 前状態を保存
-                            nodes[i][next_state[num_state * j1 + j2][num_trans * k1 + k2]].pre_state = num_state * j1 + j2;
-                            nodes[i][next_state[num_state * j1 + j2][num_trans * k1 + k2]].a_index[i-1] = nodes[i-1][num_state * j1 + j2].a_index[i-1];
-                        }
-                    }
+                // パスの選択
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
+                    // メトリックの更新
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
+
+                    // 前状態を保存
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
                 }
             }
         }
 
         // 次状態に情報を渡す
-        for (j1 = 0; j1 < num_state; j1++) {
-            for (j2 = 0; j2 < num_state; j2++) {
-                // 変調信号を更新する
-                for (m = 0; m <= i-2; m++) {
-                    nodes[i][num_state * j1 + j2].a_index[m] = nodes[i-1][nodes[i][num_qam * j1 + j2].pre_state].a_index[m];
-                }
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
+            // 変調信号を更新する
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
             }
         }
     }
 
     // 最尤の最終状態を見つける
     likely_state = 0;
-    for (j1 = 0; j1 < num_state; j1++) {
-        for (j2 = 0; j2 < num_state; j2++) {
-            if (nodes[n][num_qam * j1 + j2].metric < nodes[n][likely_state].metric) {
-                likely_state = num_qam * j1 + j2;
-            }
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
         }
     }
 
@@ -1205,6 +1275,88 @@ void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int num_qa
     for (i = 0; i < n; i++) {
         a[i] = constellation[nodes[n][likely_state].a_index[i]];
     }
+
+    qam_demodulation(a, c, n, m, 1);
+
+    // 初期化
+    for (i = 0; i <= n; i++) {
+        for (j = 0; j < num_state; j++) {
+            nodes[i][j].metric = infty;
+        }
+    }
+    nodes[0][0].metric = 0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // 決定される信号位置
+        sub = i - 1;
+
+        // ノードメトリックの計算
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
+                // 仮の変調信号を求める
+                if (m == 16) {
+                    tmp_index = (c[4*sub] << 3) + (c[4*sub+1] << 2) + ((c[4*sub+2] ^ output1[state][input]) << 1) + (c[4*sub+3] ^ output2[state][input]);
+                } else if (m == 64) {
+                    tmp_index = (c[6*sub] << 5) + (c[6*sub+1] << 4) + (c[6*sub+2] << 3) + (c[6*sub+3] << 2) + ((c[6*sub+4] ^ output1[state][input]) << 1) + (c[6*sub+5] ^ output2[state][input]);
+                } else if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + (c[8*sub+4] << 3) + (c[8*sub+5] << 2) + ((c[8*sub+6] ^ output1[state][input]) << 1) + (c[8*sub+7] ^ output2[state][input]);
+                }
+
+                // ブランチメトリックを求める
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+
+                // パスの選択
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
+                    // メトリックの更新
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
+
+                    // 前状態を保存
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
+                }
+            }
+        }
+
+        // 次状態に情報を渡す
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
+            // 変調信号を更新する
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
+            }
+        }
+    }
+
+    // 最尤の最終状態を見つける
+    likely_state = 0;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
+        }
+    }
+
+    // 最尤の信号をaに入力
+    for (i = 0; i < n; i++) {
+        a[i] = constellation[nodes[n][likely_state].a_index[i]];
+    }
+}
+
+
+double calc_average_power (complex *a, int n) {
+    int i;                             // ループカウンタ
+    double average = 0;                // ピーク電力と平均電力
+
+    for (i = 0; i < n; i++) {
+        // 平均の計算
+        average += pow(cabs(a[i]), 2.0) / (double)n;
+    }
+
+    // 比を返す
+    return average;
 }
 
 
