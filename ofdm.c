@@ -15,10 +15,10 @@ typedef _Complex double complex;
 
 #define PI M_PI                                                     // PI
 #define NUM_ARGUMENT 2                                              // 引数の数
-#define NUM_QAM 64                                                  // QAMのコンステレーション数
+#define NUM_QAM 256                                                 // QAMのコンステレーション数
 #define NUM_D ((int)log2(NUM_QAM))                                  // dのビット数
 #define NUM_SUBCARRIER 64                                           // サブキャリア数
-#define NUM_OFDM 30000                                              // OFDMシンボルを送る回数
+#define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
 
@@ -29,8 +29,10 @@ void run_calc_papr_ccdf () {
     complex *a;                                 // OFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    double papr, papr_tmp;                      // PAPR
+    double papr;                                // PAPR
     double ccdf;                                // CCDF
+    double *pdf;                                // PAPRのPDF
+    int min = 0, max = 10, num_index = 100;     // CCDFグラフの設定
     int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
@@ -39,6 +41,7 @@ void run_calc_papr_ccdf () {
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    pdf = (double *)malloc(num_index * sizeof(double));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
@@ -46,49 +49,44 @@ void run_calc_papr_ccdf () {
     // 出力ファイルを開く
     fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(OFDM).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (papr = 5.0; papr < 13.0; papr += 0.2) {
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-        // CCDFを初期化
-        ccdf = 0.0;
+        // 変調
+        qam_modulation(d, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
-        for (i = 0; i < NUM_OFDM; i++) {
-            // 信号を生成
-            make_signal(d, NUM_D * NUM_SUBCARRIER);
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-            // 変調
-            qam_modulation(d, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-            // オーバーサンプリング
-            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+        // PAPRの分布を入力
+        count_papr_distribution(t, pdf, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, min, max, num_index);
 
-            // IFFT
-            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
+    }
 
-            // PAPRを求める
-            papr_tmp = calc_papr_db(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    for (i = 0; i < num_index; i++) {
+        // thresholdを設定
+        papr = (double)min + (double)(i * (max - min)) / (double)num_index;
 
-            // CCDFを計算
-            if (papr < papr_tmp) {
-                ccdf += 1.0;
-            }
-
-            // 進捗を出力
-            fprintf(stderr, "papr = %lf, trial = %d ccdf = %e   \r", papr, i+1, ccdf / (double)(i+1));
-        }
-
-        // CCDFの平均を求める
-        ccdf /= (double)NUM_OFDM;
+        // CCDFを求める
+        ccdf = integrate_ccdf(pdf, papr, NUM_OFDM, min, max, num_index);
 
         // ファイル出力
         fprintf(fp, "%lf %e\n", papr, ccdf);
-
-        // 改行
-        printf("\n");
     }
+
+    // 改行
+    printf("\n");
 
     // メモリ解放
     free(d);
     free(a);
+    free(pdf);
     fftw_free(f);
     fftw_free(t);
 }
@@ -102,6 +100,8 @@ void run_calc_normalized_ccdf () {
     fftw_complex *t;                            // FFT用(時間領域)
     double power;                               // 正規化瞬時電力
     double ccdf;                                // CCDF
+    double *pdf;                                // PAPRのPDF
+    int min = 0, max = 10, num_index = 100;     // CCDFグラフの設定
     int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
@@ -110,6 +110,7 @@ void run_calc_normalized_ccdf () {
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    pdf = (double *)malloc(num_index * sizeof(double));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
@@ -117,44 +118,44 @@ void run_calc_normalized_ccdf () {
     // 出力ファイルを開く
     fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(OFDM).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (power = 2.0; power < 9.5; power += 0.5) {
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-        // CCDFを初期化
-        ccdf = 0.0;
+        // 変調
+        qam_modulation(d, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
-        for (i = 0; i < NUM_OFDM; i++) {
-            // 信号を生成
-            make_signal(d, NUM_D * NUM_SUBCARRIER);
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-            // 変調
-            qam_modulation(d, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-            // オーバーサンプリング
-            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+        // 正規化瞬時電力のpdfを求める
+        count_normalized_distribution(t, pdf, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, min, max, num_index);
 
-            // IFFT
-            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-            // CCDFを計算
-            ccdf += calc_normalized_ccdf(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, power);
-
-            // 進捗を出力
-            fprintf(stderr, "power = %lf, trial = %d ccdf = %e   \r", power, i+1, ccdf / (double)(i+1));
-        }
-
-        // CCDFの平均を求める
-        ccdf /= (double)NUM_OFDM;
-
-        // ファイル出力
-        fprintf(fp, "%lf %e\n", power, ccdf);
-
-        // 改行
-        printf("\n");
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
     }
+
+    for (i = 0; i < num_index; i++) {
+    // thresholdを設定
+    power = (double)min + (double)(i * (max - min)) / (double)num_index;
+
+    // CCDFを求める
+    ccdf = integrate_ccdf(pdf, power, NUM_OFDM, min, max, num_index);
+
+    // ファイル出力
+    fprintf(fp, "%lf %e\n", power, ccdf);
+    }
+
+    // 改行
+    printf("\n");
 
     // メモリ解放
     free(d);
     free(a);
+    free(pdf);
     fftw_free(f);
     fftw_free(t);
 }

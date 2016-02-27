@@ -153,7 +153,7 @@ void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n
 
 
 // 畳み込み符号化(拘束長3)
-void convolutional_coding (int *u, int *c, int n) {
+void convolutional_encoding (int *u, int *c, int n) {
     int i;                              // ループカウンタ
     int register1, register2;           // シフトレジスタ
 
@@ -174,10 +174,12 @@ void convolutional_coding (int *u, int *c, int n) {
 }
 
 
-// パリティ検査行列による復号(拘束長3)
-void parity_check_decoding (int *c, int *u, int n) {
-    int i;                                                      // ループカウンタ
-    int register11, register12, register21, register22;         // シフトレジスタ
+// 畳み込み符号化(拘束長3)
+void convolutional_encoding2 (int *u, int *c, int n) {
+    int i;                              // ループカウンタ
+    int register11, register12;         // シフトレジスタ
+    int register21, register22;         // シフトレジスタ
+
 
     // シフトレジスタを初期化
     register11 = 0;
@@ -187,52 +189,160 @@ void parity_check_decoding (int *c, int *u, int n) {
 
     // 畳み込み
     for (i = 0; i < n; i++) {
-        u[i] = c[2*i] ^ register11 ^ register12 ^ c[2*i+1] ^ register22;
+        c[4*i] = u[2*i] ^ register12;
+        c[4*i+1] = u[2*i] ^ register11 ^ register12;
+        c[4*i+2] = u[2*i+1] ^ register22;
+        c[4*i+3] = u[2*i+1] ^ register21 ^ register22;
 
         // レジスタをシフト
-        register22 = register21;
-        register21 = c[2*i+1];
         register12 = register11;
-        register11 = c[2*i];
+        register11 = u[2*i];
+        register22 = register21;
+        register21 = u[2*i+1];
+    }
+}
+
+
+// 畳み込み符号化(拘束長3)
+void convolutional_encoding3 (int *u, int *c, int n) {
+    int i;                              // ループカウンタ
+    int register11, register12;           // シフトレジスタ
+    int register21, register22;         // シフトレジスタ
+    int register31, register32;         // シフトレジスタ
+
+
+    // シフトレジスタを初期化
+    register11 = 0;
+    register12 = 0;
+    register21 = 0;
+    register22 = 0;
+    register31 = 0;
+    register32 = 0;
+
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        c[6*i] = u[3*i] ^ register12;
+        c[6*i+1] = u[3*i] ^ register11 ^ register12;
+        c[6*i+2] = u[3*i+1] ^ register22;
+        c[6*i+3] = u[3*i+1] ^ register21 ^ register22;
+        c[6*i+4] = u[3*i+2] ^ register32;
+        c[6*i+5] = u[3*i+2] ^ register31 ^ register32;
+
+        // レジスタをシフト
+        register12 = register11;
+        register11 = u[3*i];
+        register22 = register21;
+        register21 = u[3*i+1];
+        register32 = register31;
+        register31 = u[3*i+2];
     }
 }
 
 
 // パリティ検査行列による復号(拘束長3)
-void parallel_parity_check_decoding (int *c, int *u, int n) {
+void parity_check_decoding (int *c, int *u, int n) {
     int i;                                                      // ループカウンタ
-    int register111, register112, register121, register122, register211, register212, register221, register222;         // シフトレジスタ
+    int register1, register2, register3, register4;         // シフトレジスタ
 
     // シフトレジスタを初期化
-    register111 = 0;
-    register112 = 0;
-    register121 = 0;
-    register122 = 0;
-    register211 = 0;
-    register212 = 0;
-    register221 = 0;
-    register222 = 0;
+    register1 = 0;
+    register2 = 0;
+    register3 = 0;
+    register4 = 0;
 
     // 畳み込み
     for (i = 0; i < n; i++) {
-        u[2*i] = c[4*i] ^ register111 ^ register112 ^ c[4*i+1] ^ register122;
-        u[2*i+1] = c[4*i+2] ^ register211 ^ register212 ^ c[4*i+3] ^ register222;
+        u[i] = c[2*i] ^ register1 ^ register2 ^ c[2*i+1] ^ register4;
 
         // レジスタをシフト
-        register122 = register121;
-        register121 = c[4*i+1];
-        register112 = register111;
-        register111 = c[4*i];
-        register222 = register221;
-        register221 = c[4*i+3];
-        register212 = register211;
-        register211 = c[4*i+2];
+        register4 = register3;
+        register3 = c[2*i+1];
+        register2 = register1;
+        register1 = c[2*i];
+    }
+}
+
+
+// パリティ検査行列による復号(拘束長3)
+void parity_check_decoding2 (int *c, int *u, int n) {
+    int i;                                                      // ループカウンタ
+    int register11, register12, register13, register14;         // シフトレジスタ
+    int register21, register22, register23, register24;         // シフトレジスタ
+
+    // シフトレジスタを初期化
+    register11 = 0;
+    register12 = 0;
+    register13 = 0;
+    register14 = 0;
+    register21 = 0;
+    register22 = 0;
+    register23 = 0;
+    register24 = 0;
+
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        u[2*i] = c[4*i] ^ register11 ^ register12 ^ c[4*i+1] ^ register14;
+        u[2*i+1] = c[4*i+2] ^ register21 ^ register22 ^ c[4*i+3] ^ register24;
+
+        // レジスタをシフト
+        register14 = register13;
+        register13 = c[4*i+1];
+        register12 = register11;
+        register11 = c[4*i];
+        register24 = register23;
+        register23 = c[4*i+3];
+        register22 = register21;
+        register21 = c[4*i+2];
+    }
+}
+
+
+// パリティ検査行列による復号(拘束長3)
+void parity_check_decoding3 (int *c, int *u, int n) {
+    int i;                                                      // ループカウンタ
+    int register11, register12, register13, register14;
+    int register21, register22, register23, register24;          // シフトレジスタ
+    int register31, register32, register33, register34;          // シフトレジスタ
+
+    // シフトレジスタを初期化
+    register11 = 0;
+    register12 = 0;
+    register13 = 0;
+    register14 = 0;
+    register21 = 0;
+    register22 = 0;
+    register23 = 0;
+    register24 = 0;
+    register31 = 0;
+    register32 = 0;
+    register33 = 0;
+    register34 = 0;
+
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        u[3*i] = c[6*i] ^ register11 ^ register12 ^ c[6*i+1] ^ register14;
+        u[3*i+1] = c[6*i+2] ^ register21 ^ register22 ^ c[6*i+3] ^ register24;
+        u[3*i+2] = c[6*i+4] ^ register31 ^ register32 ^ c[6*i+5] ^ register34;
+
+        // レジスタをシフト
+        register14 = register13;
+        register13 = c[6*i+1];
+        register12 = register11;
+        register11 = c[6*i];
+        register24 = register23;
+        register23 = c[6*i+3];
+        register22 = register21;
+        register21 = c[6*i+2];
+        register34 = register33;
+        register33 = c[6*i+5];
+        register32 = register31;
+        register31 = c[6*i+4];
     }
 }
 
 
 // パリティ検査行列の左逆行列による符号化(拘束長3)
-void inverse_parity_check_coding (int *u, int *c, int n) {
+void inverse_parity_check_encoding (int *u, int *c, int n) {
     int i;                              // ループカウンタ
     int register1;                      // シフトレジスタ
 
@@ -251,7 +361,7 @@ void inverse_parity_check_coding (int *u, int *c, int n) {
 
 
 // 並列パリティ検査行列の左逆行列による符号化(拘束長3)
-void parallel_inverse_parity_check_coding (int *u, int *c, int n) {
+void inverse_parity_check_encoding2 (int *u, int *c, int n) {
     int i;                                  // ループカウンタ
     int register1, register2;               // シフトレジスタ
 
@@ -274,18 +384,37 @@ void parallel_inverse_parity_check_coding (int *u, int *c, int n) {
 }
 
 
-// 下位ビットZPSKマッピング(16QAM対応)
-complex map_zpsk_lsb_extended () {
-    complex a;                      // 変調信号
+// 並列パリティ検査行列の左逆行列による符号化(拘束長3)
+void inverse_parity_check_encoding3 (int *u, int *c, int n) {
+    int i;                                      // ループカウンタ
+    int register1, register2, register3;        // シフトレジスタ
 
-    a = (complex)0.0;
+    // シフトレジスタを初期化
+    register1 = 0;
+    register2 = 0;
+    register3 = 0;
 
-    return a;
+    // 畳み込み
+    for (i = 0; i < n; i++) {
+        c[6*i] = register1;
+        c[6*i+1] = u[3*i] ^ register1;
+
+        c[6*i+2] = register2;
+        c[6*i+3] = u[3*i+1] ^ register2;
+
+        c[6*i+4] = register3;
+        c[6*i+5] = u[3*i+2] ^ register3;
+
+        // レジスタをシフト
+        register1 = u[3*i];
+        register2 = u[3*i+1];
+        register3 = u[3*i+2];
+    }
 }
 
 
 // 下位ビットQPSKマッピング(16QAM対応)
-complex map_qpsk_lsb (int bit1, int bit2) {
+complex map_4_4_qam (int bit1, int bit2) {
     complex a;                      // 変調信号
 
     a = (2.0 - 4.0 * bit2) + I*(2.0 - 4.0 * bit1);
@@ -295,10 +424,20 @@ complex map_qpsk_lsb (int bit1, int bit2) {
 
 
 // 下位ビットQPSKマッピング(64QAM対応)
-complex map_qpsk_lsb_extended (int bit1, int bit2) {
+complex map_4_16_qam (int bit1, int bit2) {
     complex a;                      // 変調信号
 
     a = (4.0 - 8.0 * bit2) + I*(4.0 - 8.0 * bit1);
+
+    return a;
+}
+
+
+// 下位ビットQPSKマッピング(256QAM対応)
+complex map_4_64_qam (int bit1, int bit2) {
+    complex a;                      // 変調信号
+
+    a = (8.0 - 16.0 * bit2) + I*(8.0 - 16.0 * bit1);
 
     return a;
 }
@@ -332,10 +471,10 @@ complex map_16qam_type2 (int bit1, int bit2, int bit3, int bit4) {
 
 
 // 下位ビット16QAMマッピング(64QAM対応)
-complex map_16qam_lsb (int bit1, int bit2, int bit3, int bit4) {
+complex map_16_4_qam (int bit1, int bit2, int bit3, int bit4) {
     complex a;                      // 変調信号
 
-    a = map_qpsk_lsb(bit3, bit4);
+    a = map_4_4_qam(bit3, bit4);
     a += 4.0 + I*4.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -349,10 +488,10 @@ complex map_16qam_lsb (int bit1, int bit2, int bit3, int bit4) {
 
 
 // 下位ビット16QAMマッピング(256QAM対応)
-complex map_16qam_lsb_extended (int bit1, int bit2, int bit3, int bit4) {
+complex map_16_16_qam (int bit1, int bit2, int bit3, int bit4) {
     complex a;                      // 変調信号
 
-    a = map_qpsk_lsb_extended(bit3, bit4);
+    a = map_4_16_qam(bit3, bit4);
     a += 8.0 + I*8.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -394,10 +533,10 @@ complex map_64qam_type2 (int bit1, int bit2, int bit3, int bit4, int bit5, int b
 
 
 // 下位ビット64QAMマッピング(256QAM対応)
-complex map_64qam_lsb (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6) {
+complex map_64_4_qam (int bit1, int bit2, int bit3, int bit4, int bit5, int bit6) {
     complex a;                      // 変調信号
 
-    a = map_16qam_lsb(bit3, bit4, bit5, bit6);
+    a = map_16_4_qam(bit3, bit4, bit5, bit6);
     a += 8.0 + I*8.0;
     if (bit1 == 1) {
         a = conj(a);
@@ -732,31 +871,45 @@ void qam_modulation_lsb (int *c, complex *a, int n, int m) {
 
     for (int i = 0; i < n; i++) {
         if (m == 16) {
-            a[i] = map_qpsk_lsb(c[4*i], c[4*i+1]);
+            a[i] = map_4_4_qam(c[4*i], c[4*i+1]);
         } else if (m == 64) {
-            a[i] = map_16qam_lsb(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3]);
+            a[i] = map_16_4_qam(c[6*i], c[6*i+1], c[6*i+2], c[6*i+3]);
         } else if (m == 256) {
-            a[i] = map_64qam_lsb(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3], c[8*i+4], c[8*i+5]);
+            a[i] = map_64_4_qam(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3], c[8*i+4], c[8*i+5]);
         }
     }
 }
 
 
 // トレリスシェイピングの変調
-void qam_modulation_lsb_extended (int *c, complex *a, int n, int m) {
+void qam_modulation_lsb2 (int *c, complex *a, int n, int m) {
     // コンステレーション数のチェック
-    if (m != 16 && m != 64 && m != 256) {
+    if (m != 64 && m != 256) {
         printf("Invalid number of constellation.\n");
         exit(-1);
     }
 
     for (int i = 0; i < n; i++) {
-        if (m == 16) {
-            a[i] = map_zpsk_lsb_extended();
-        } else if (m == 64) {
-            a[i] = map_qpsk_lsb_extended(c[6*i], c[6*i+1]);
+        if (m == 64) {
+            a[i] = map_4_16_qam(c[6*i], c[6*i+1]);
         } else if (m == 256) {
-            a[i] = map_16qam_lsb_extended(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3]);
+            a[i] = map_16_16_qam(c[8*i], c[8*i+1], c[8*i+2], c[8*i+3]);
+        }
+    }
+}
+
+
+// トレリスシェイピングの変調
+void qam_modulation_lsb3 (int *c, complex *a, int n, int m) {
+    // コンステレーション数のチェック
+    if (m != 256) {
+        printf("Invalid number of constellation.\n");
+        exit(-1);
+    }
+
+    for (int i = 0; i < n; i++) {
+        if (m == 256) {
+            a[i] = map_4_64_qam(c[8*i], c[8*i+1]);
         }
     }
 }
@@ -1169,7 +1322,7 @@ void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
 
 
 // トレリスシェーピング
-void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, int m) {
+void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int m) {
     const int num_state = 4;                                                            // 状態数
     const int num_trans = 2;                                                            // 遷移数
     const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
@@ -1187,7 +1340,7 @@ void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, in
 
     if (memory_flag == 0) {
         // コンステレーション数のチェック
-        if (m != 16 && m != 64 && m != 256) {
+        if (m != 64 && m != 256) {
             printf("Invalid number of constellation.\n");
             exit(-1);
         }
@@ -1229,9 +1382,7 @@ void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, in
 
             for (input = 0; input < num_trans; input++) {
                 // 仮の変調信号を求める
-                if (m == 16) {
-                    tmp_index = (((c[4*sub] ^ output1[state][input]) << 3) + ((c[4*sub+1] ^ output2[state][input]) << 2) + (c[4*sub+2] << 1) + c[4*sub+3]);
-                } else if (m == 64) {
+                if (m == 64) {
                     tmp_index = (c[6*sub] << 5) + (c[6*sub+1] << 4) + ((c[6*sub+2] ^ output1[state][input]) << 3) + ((c[6*sub+3] ^ output2[state][input]) << 2) + (c[6*sub+4] << 1) + c[6*sub+5];
                 } else if (m == 256) {
                     tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + ((c[8*sub+4] ^ output1[state][input]) << 3) + ((c[8*sub+5] ^ output2[state][input]) << 2) + (c[8*sub+6] << 1) + c[8*sub+7];
@@ -1346,6 +1497,240 @@ void trellis_shaping_caf_parallel (int *c, complex *a_caf, complex *a, int n, in
 }
 
 
+// トレリスシェーピング
+void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
+    const int num_state = 4;                                                            // 状態数
+    const int num_trans = 2;                                                            // 遷移数
+    const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
+    const int output1[num_state][num_trans] = {{0,1}, {0,1}, {1,0}, {1,0}};             // 1ビット目の出力
+    const int output2[num_state][num_trans] = {{0,1}, {1,0}, {1,0}, {0,1}};             // 2ビット目の出力
+    const double infty = (double)n * 10000000;                                          // 無限
+    int tmp_index;                                                                      // 合成した信号
+    double branch_metric;                                                               // ブランチメトリック
+    int likely_state;                                                                   // トレースバックの最尤状態
+    static complex *constellation;                                                      // 変調信号のテーブル
+    static node **nodes;                                                                // ノード
+    static int memory_flag;                                                             // メモリ管理フラグ
+    int sub, state, input;                                                              // ループカウンタ
+    int i, j, l;                                                                        // ループカウンタ
+
+    if (memory_flag == 0) {
+        // コンステレーション数のチェック
+        if (m != 256) {
+            printf("Invalid number of constellation.\n");
+            exit(-1);
+        }
+
+        // メモリの確保
+        constellation = (complex *)malloc(m * sizeof(complex));
+        nodes = (node **)malloc((n+1) * sizeof(node *));
+
+        for (i = 0; i <= n; i++) {
+            nodes[i] = (node *)malloc(num_state * sizeof(node));
+            for (j = 0; j < num_state; j++) {
+                nodes[i][j].a_index = (int *)malloc(n * sizeof(int));
+            }
+        }
+
+        // 信号点配置を初期化
+        construct_constellation(constellation, m, 1);
+
+        // フラグをチェック
+        memory_flag = 1;
+    }
+
+    // 初期化
+    for (i = 0; i <= n; i++) {
+        for (j = 0; j < num_state; j++) {
+            nodes[i][j].metric = infty;
+        }
+    }
+    nodes[0][0].metric = 0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // 決定される信号位置
+        sub = i - 1;
+
+        // ノードメトリックの計算
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
+                // 仮の変調信号を求める
+                if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + ((c[8*sub+2] ^ output1[state][input]) << 5) + ((c[8*sub+3] ^ output2[state][input]) << 4) + (c[8*sub+4] << 3) + (c[8*sub+5] << 2) + (c[8*sub+6] << 1) + c[8*sub+7];
+                }
+
+                // ブランチメトリックを求める
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+
+                // パスの選択
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
+                    // メトリックの更新
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
+
+                    // 前状態を保存
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
+                }
+            }
+        }
+
+        // 次状態に情報を渡す
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
+            // 変調信号を更新する
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
+            }
+        }
+    }
+
+    // 最尤の最終状態を見つける
+    likely_state = 0;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
+        }
+    }
+
+    // 最尤の信号をaに入力
+    for (i = 0; i < n; i++) {
+        a[i] = constellation[nodes[n][likely_state].a_index[i]];
+    }
+
+    qam_demodulation(a, c, n, m, 1);
+
+    // 初期化
+    for (i = 0; i <= n; i++) {
+        for (j = 0; j < num_state; j++) {
+            nodes[i][j].metric = infty;
+        }
+    }
+    nodes[0][0].metric = 0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // 決定される信号位置
+        sub = i - 1;
+
+        // ノードメトリックの計算
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
+                // 仮の変調信号を求める
+                if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + ((c[8*sub+4] ^ output1[state][input]) << 3) + ((c[8*sub+5] ^ output2[state][input]) << 2) + (c[8*sub+6] << 1) + c[8*sub+7];
+                }
+
+                // ブランチメトリックを求める
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+
+                // パスの選択
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
+                    // メトリックの更新
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
+
+                    // 前状態を保存
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
+                }
+            }
+        }
+
+        // 次状態に情報を渡す
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
+            // 変調信号を更新する
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
+            }
+        }
+    }
+
+    // 最尤の最終状態を見つける
+    likely_state = 0;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
+        }
+    }
+
+    // 最尤の信号をaに入力
+    for (i = 0; i < n; i++) {
+        a[i] = constellation[nodes[n][likely_state].a_index[i]];
+    }
+
+    qam_demodulation(a, c, n, m, 1);
+
+    // 初期化
+    for (i = 0; i <= n; i++) {
+        for (j = 0; j < num_state; j++) {
+            nodes[i][j].metric = infty;
+        }
+    }
+    nodes[0][0].metric = 0;
+
+    // ビタビアルゴリズム開始
+    for (i = 1; i <= n; i++) {
+        // 決定される信号位置
+        sub = i - 1;
+
+        // ノードメトリックの計算
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i-1][state].metric > infty - 1.0) continue;
+
+            for (input = 0; input < num_trans; input++) {
+                // 仮の変調信号を求める
+                if (m == 256) {
+                    tmp_index = (c[8*sub] << 7) + (c[8*sub+1] << 6) + (c[8*sub+2] << 5) + (c[8*sub+3] << 4) + (c[8*sub+4] << 3) + (c[8*sub+5] << 2) + ((c[8*sub+6] ^ output1[state][input]) << 1) + (c[8*sub+7] ^ output2[state][input]);
+                }
+
+                // ブランチメトリックを求める
+                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+
+                // パスの選択
+                if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
+                    // メトリックの更新
+                    nodes[i][next_state[state][input]].metric = nodes[i-1][state].metric + branch_metric;
+
+                    // 前状態を保存
+                    nodes[i][next_state[state][input]].pre_state = state;
+                    nodes[i][next_state[state][input]].a_index[sub] = tmp_index;
+                }
+            }
+        }
+
+        // 次状態に情報を渡す
+        for (state = 0; state < num_state; state++) {
+            if (nodes[i][state].metric > infty - 1.0) continue;
+
+            // 変調信号を更新する
+            for (l = 0; l < sub; l++) {
+                nodes[i][state].a_index[l] = nodes[i-1][nodes[i][state].pre_state].a_index[l];
+            }
+        }
+    }
+
+    // 最尤の最終状態を見つける
+    likely_state = 0;
+    for (state = 0; state < num_state; state++) {
+        if (nodes[n][state].metric < nodes[n][likely_state].metric) {
+            likely_state = state;
+        }
+    }
+
+    // 最尤の信号をaに入力
+    for (i = 0; i < n; i++) {
+        a[i] = constellation[nodes[n][likely_state].a_index[i]];
+    }
+}
+
+
 double calc_average_power (complex *a, int n) {
     int i;                             // ループカウンタ
     double average = 0;                // ピーク電力と平均電力
@@ -1399,4 +1784,98 @@ double calc_normalized_ccdf (complex *a, int n, double threshold) {
     }
 
     return count / (double)n;
+}
+
+
+// PAPRの分布を求める
+void count_papr_distribution (complex *x, double *pdf, int n, int min, int max, int num_index) {
+    double stride;                      // 刻み幅
+    double papr;                        // PAPR
+    int index;                          // 配列のインデックス
+    static int memory_flag;             // メモリ管理フラグ
+    int i;                              // ループカウンタ
+
+    if (memory_flag == 0) {
+        // 初期化
+        for (i = 0; i < num_index; i++) {
+            pdf[i] = 0;
+        }
+
+        memory_flag = 1;
+    }
+
+    // 配列１つの幅を設定
+    stride = (double)(max - min) / (double)num_index;
+
+    // PAPRを求める
+    papr = calc_papr_db(x, n);
+
+    // カウントする配列のインデックスを計算する
+    index = (int)round((papr - (double)min) / stride);
+
+    if (0 <= index && index < num_index) {
+        pdf[index]++;
+    }
+}
+
+// 正規化瞬時電力の分布を求める
+void count_normalized_distribution (complex *x, double *pdf, int n, int min, int max, int num_index) {
+    double stride;                      // 刻み幅
+    double average;                     // ピーク電力と平均電力
+    double ratio;                       // 平均電力との比
+    int index;                          // 配列のインデックス
+    static int memory_flag;             // メモリ管理フラグ
+    int i;                              // ループカウンタ
+
+    if (memory_flag == 0) {
+        // 初期化
+        for (i = 0; i < num_index; i++) {
+            pdf[i] = 0;
+        }
+
+        memory_flag = 1;
+    }
+
+    // 配列１つの幅を設定
+    stride = (double)(max - min) / (double)num_index;
+
+    // 平均を求める
+    average = calc_average_power(x, n);
+
+    // CCDFを求める
+    for (i = 0; i < n; i++) {
+        // 平均電力との比を求める
+        ratio = 10.0 * log10(pow(cabs(x[i]), 2.0) / average);
+
+        // カウントする配列のインデックスを計算する
+        index = (int)round((ratio - (double)min) / stride);
+
+        if (0 <= index && index < num_index) {
+            pdf[index] += 1.0 / (double)n;
+        }
+    }
+
+}
+
+// CCDFを計算する
+double integrate_ccdf (double *pdf, double papr, int n, int min, int max, int num_index) {
+    double stride;                      // 刻み幅
+    int index;                          // 配列のインデックス
+    double ccdf;                        // CCDF
+    int i;                              // ループカウンタ
+
+    // 配列１つの幅を設定
+    stride = (double)(max - min) / (double)num_index;
+
+    // 配列のインデックスを計算
+    index = (int)round((papr - (double)min) / (double)stride);
+
+    // CCDFを計算
+    ccdf = 0;
+    for (i = index; i < num_index; i++) {
+        ccdf += pdf[i];
+    }
+    ccdf /= (double)n;
+
+    return ccdf;
 }

@@ -18,9 +18,9 @@ typedef _Complex double complex;
 #define NUM_QAM 64                                                  // QAMのコンステレーション数
 #define NUM_D ((int)log2(NUM_QAM))                                  // dのビット数
 #define NUM_SUBCARRIER 64                                           // サブキャリア数
-#define NUM_OFDM 30000                                              // OFDMシンボルを送る回数
+#define NUM_OFDM 100000                                              // OFDMシンボルを送る回数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
-#define CLIPPING_RATIO 1.5                                          // クリッピング比
+#define CLIPPING_RATIO 1.2                                          // クリッピング比
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
 
 
@@ -45,9 +45,9 @@ void run_calc_papr_ccdf () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(lsb_extended).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(CAF).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (papr = 5.0; papr < 13.0; papr += 0.2) {
+    for (papr = 3.0; papr < 13.0; papr += 0.5) {
 
         // CCDFを初期化
         ccdf = 0.0;

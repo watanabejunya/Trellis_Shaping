@@ -15,7 +15,7 @@ typedef _Complex double complex;
 #endif
 
 #define NUM_ARGUMENT 2                                              // 引数の数
-#define NUM_OFDM 30000                                              // OFDMシンボルを送る回数
+#define NUM_OFDM 100000                                              // OFDMシンボルを送る回数
 #define NUM_QAM 256                                                  // QAMのコンステレーション数
 #define NUM_C ((int)log2(NUM_QAM))                                  // cのビット数
 #define NUM_D (NUM_C - 1)                                           // dのビット数
@@ -24,9 +24,8 @@ typedef _Complex double complex;
 #define NUM_Z 2                                                     // zのビット数
 #define NUM_SUBCARRIER 64                                           // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
-#define CLIPPING_RATIO 1.0                                          // クリッピングの閾値
+#define CLIPPING_RATIO 1.6                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ
-#define NUM_SELECTED_MAPPING 1                                      // SLMの候補数
 
 
 // マッピングを出力する
@@ -62,7 +61,7 @@ void run_mapping () {
     demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
     // 符号化
-    inverse_parity_check_coding(b, z, NUM_SUBCARRIER);
+    inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
     // 信号を合成
     multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
@@ -77,7 +76,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // 変調
@@ -108,7 +107,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // トレリスシェーピング
@@ -121,7 +120,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // メモリ解放
@@ -142,16 +141,15 @@ void run_calc_papr_ccdf () {
     int *s, *z;                                 // 上位情報ビット
     int *b;                                     // 下位情報ビット
     int *c;                                     // 符号語
-    int *x, *y;                                 // インタリーバ
     complex *a;                                 // OFDMシンボル
     complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    complex *t_opt;                             // SLMで選ばれたOFDMシンボル
     double papr;                                // PAPR
-    double papr_tmp, papr_opt;                  // PAPR
     double ccdf;                                // CCDF
-    int i, j;                                   // ループカウンタ
+    double *pdf;                                // PAPRのPDF
+    int min = 0, max = 10, num_index = 100;     // CCDFグラフの設定
+    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
@@ -160,109 +158,81 @@ void run_calc_papr_ccdf () {
     b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
     z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
-    x = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
-    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    t_opt = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
+    pdf = (double *)malloc(num_index * sizeof(double));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (papr = 3.0; papr < 9.5; papr += 0.2) {
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-        // CCDFを初期化
-        ccdf = 0.0;
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
-        for (i = 0; i < NUM_OFDM; i++) {
-            // 信号を生成
-            make_signal(d, NUM_D * NUM_SUBCARRIER);
+        // 符号化
+        inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
-            // 信号を分離
-            demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+        // 信号を合成
+        multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
-            // 符号化
-            inverse_parity_check_coding(b, z, NUM_SUBCARRIER);
+        // 変調
+        qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
 
-            // PAPRを初期化
-            papr_opt = 100.0;
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-            for (j = 0; j < NUM_SELECTED_MAPPING; j++) {
-                // インタリーバを生成
-                make_signal(x, NUM_B * NUM_SUBCARRIER);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-                // インタリーバを符号化
-                inverse_parity_check_coding(x, y, NUM_SUBCARRIER);
+        // クリッピング
+        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-                // 信号をインタリーブする
-                xor_addition(z, y, NUM_Z * NUM_SUBCARRIER);
+        // FFT
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-                // 信号を合成
-                multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
+        // 減衰を補償する
+        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-                // 変調
-                qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
+        // ダウンサンプリング
+        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-                // オーバーサンプリング
-                over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+        // トレリスシェーピング
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
 
-                // IFFT
-                ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-                // クリッピング
-                clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-                // FFT
-                fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+        // PAPRの分布を入力
+        count_papr_distribution(t, pdf, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, min, max, num_index);
 
-                // 減衰を補償する
-                offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
+    }
 
-                // ダウンサンプリング
-                down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+    for (i = 0; i < num_index; i++) {
+        // thresholdを設定
+        papr = (double)min + (double)(i * (max - min)) / (double)num_index;
 
-                // トレリスシェーピング
-                trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
-
-                // オーバーサンプリング
-                over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-                // IFFT
-                ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-                // PAPRを求める
-                papr_tmp = calc_papr_db(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-
-                // 最もPAPRが低いものを保存
-                if (papr_tmp < papr_opt) {
-                    papr_opt = papr_tmp;
-                    copy_complex(t, t_opt, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-                }
-            }
-
-            // CCDFを計算
-            if (papr < papr_opt) {
-                ccdf += 1.0;
-            }
-
-            // 進捗を出力
-            fprintf(stderr, "papr = %lf, trial = %d ccdf = %e   \r", papr, i+1, ccdf / (double)(i+1));
-        }
-
-        // CCDFの平均を求める
-        ccdf /= (double)NUM_OFDM;
+        // CCDFを求める
+        ccdf = integrate_ccdf(pdf, papr, NUM_OFDM, min, max, num_index);
 
         // ファイル出力
         fprintf(fp, "%lf %e\n", papr, ccdf);
-
-        // 改行
-        printf("\n");
     }
+
+    // 改行
+    printf("\n");
 
     // メモリ解放
     free(d);
@@ -270,11 +240,9 @@ void run_calc_papr_ccdf () {
     free(b);
     free(c);
     free(z);
-    free(x);
-    free(y);
     free(a);
-    free(t_opt);
     free(a_caf);
+    free(pdf);
     fftw_free(f);
     fftw_free(t);
 }
@@ -286,16 +254,15 @@ void run_calc_normalized_ccdf () {
     int *s, *z;                                 // 上位情報ビット
     int *b;                                     // 下位情報ビット
     int *c;                                     // 符号語
-    int *x, *y;                                 // インタリーバ
     complex *a;                                 // OFDMシンボル
     complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    complex *t_opt;                             // SLMで選ばれたOFDMシンボル
     double power;                               // 正規化瞬時電力
     double ccdf;                                // CCDF
-    double papr, papr_opt;                      // PAPR
-    int i, j;                                   // ループカウンタ
+    double *pdf;                                // PAPRのPDF
+    int min = 0, max = 10, num_index = 100;     // CCDFグラフの設定
+    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
@@ -303,108 +270,82 @@ void run_calc_normalized_ccdf () {
     s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
     b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
     c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
-    x = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
     z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
-    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    t_opt = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
+    pdf = (double *)malloc(num_index * sizeof(double));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (power = 2.0; power < 9.5; power += 0.5) {
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-        // CCDFを初期化
-        ccdf = 0;
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
-        for (i = 0; i < NUM_OFDM; i++) {
-            // 信号を生成
-            make_signal(d, NUM_D * NUM_SUBCARRIER);
+        // 符号化
+        inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
-            // 信号を分離
-            demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+        // 信号を合成
+        multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
-            // 符号化
-            inverse_parity_check_coding(b, z, NUM_SUBCARRIER);
+        // 変調
+        qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
 
-            // PAPRを初期化
-            papr_opt = 100;
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-            for (j = 0; j < NUM_SELECTED_MAPPING; j++) {
-                // インタリーバを生成
-                make_signal(x, NUM_B * NUM_SUBCARRIER);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-                // インタリーバを符号化
-                convolutional_coding(x, y, NUM_SUBCARRIER);
+        // クリッピング
+        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-                // 信号をインタリーブする
-                xor_addition(z, y, NUM_Z * NUM_SUBCARRIER);
+        // FFT
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-                // 信号を合成
-                multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
+        // 減衰を補償する
+        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-                // 変調
-                qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
+        // ダウンサンプリング
+        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-                // オーバーサンプリング
-                over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+        // トレリスシェーピング
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
 
-                // IFFT
-                ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-                // クリッピング
-                clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-                // FFT
-                fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+        // 正規化瞬時電力のpdfを求める
+        count_normalized_distribution(t, pdf, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, min, max, num_index);
 
-                // 減衰を補償する
-                offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
+    }
 
-                // ダウンサンプリング
-                down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+    for (i = 0; i < num_index; i++) {
+        // thresholdを設定
+        power = (double)min + (double)(i * (max - min)) / (double)num_index;
 
-                // トレリスシェーピング
-                trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
-
-                // オーバーサンプリング
-                over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-                // IFFT
-                ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-                // PAPRを求める
-                papr = calc_papr_db(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-
-                // 最もPAPRが低いものを保存
-                if (papr < papr_opt) {
-                    papr_opt = papr;
-                    copy_complex(t, t_opt, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-                }
-            }
-
-            // CCDFを計算
-            ccdf += calc_normalized_ccdf(t_opt, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, power);
-
-            // 進捗を出力
-            fprintf(stderr, "power = %lf, trial = %d ccdf = %e   \r", power, i+1, ccdf / (double)(i+1));
-        }
-
-        // CCDFの平均を求める
-        ccdf /= (double)NUM_OFDM;
+        // CCDFを求める
+        ccdf = integrate_ccdf(pdf, power, NUM_OFDM, min, max, num_index);
 
         // ファイル出力
         fprintf(fp, "%lf %e\n", power, ccdf);
-
-        // 改行
-        printf("\n");
     }
+
+    // 改行
+    printf("\n");
 
     // メモリ解放
     free(d);
@@ -412,11 +353,9 @@ void run_calc_normalized_ccdf () {
     free(b);
     free(c);
     free(z);
-    free(x);
-    free(y);
     free(a);
-    free(t_opt);
     free(a_caf);
+    free(pdf);
     fftw_free(f);
     fftw_free(t);
 }
@@ -452,7 +391,7 @@ void run_calc_clipping_ratio_characteristic () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (ratio = 0.1; ratio < 2.0; ratio += 0.1) {
 
@@ -467,7 +406,7 @@ void run_calc_clipping_ratio_characteristic () {
             demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
             // 符号化
-            inverse_parity_check_coding(b, z, NUM_SUBCARRIER);
+            inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
             // 信号を合成
             multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
@@ -567,7 +506,7 @@ void run_calc_slm_characteristic () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/slm_chara_%d-QAM_%d-subs(lsb_extended).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/slm_chara_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (num_slm = 1; num_slm <= 10; num_slm++) {
 
@@ -582,7 +521,7 @@ void run_calc_slm_characteristic () {
             demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
             // 符号化
-            inverse_parity_check_coding(b, z, NUM_SUBCARRIER);
+            inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
             // PAPRを初期化
             papr_opt = 100;
@@ -592,7 +531,7 @@ void run_calc_slm_characteristic () {
                 make_signal(x, NUM_B * NUM_SUBCARRIER);
 
                 // インタリーバを符号化
-                inverse_parity_check_coding(x, y, NUM_SUBCARRIER);
+                convolutional_encoding(x, y, NUM_SUBCARRIER);
 
                 // 信号をインタリーブする
                 xor_addition(z, y, NUM_Z * NUM_SUBCARRIER);
@@ -679,7 +618,6 @@ void run_calc_ber () {
     int *z1, *z2;                               // 畳み込み符号
     int *b1, *b2;                               // 下位情報ビット
     int *c1, *c2;                               // 符号語
-    int *x, *y;                                 // インタリーバ
     complex *a;                                 // OFDMシンボル
     complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
@@ -704,8 +642,6 @@ void run_calc_ber () {
     b2 = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
     c1 = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
     c2 = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
-    x = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
-    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
@@ -718,7 +654,7 @@ void run_calc_ber () {
     rate = (double)(NUM_D) / (double)(NUM_C);
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/ber_%d-QAM_%d-subs(lsb).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ber_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (ebn0 = 6; ebn0 < 25; ebn0++) {
         // SNRを計算
@@ -735,7 +671,7 @@ void run_calc_ber () {
             demultiplexer(d1, s1, b1, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
             // 符号化
-            inverse_parity_check_coding(b1, z1, NUM_SUBCARRIER);
+            inverse_parity_check_encoding(b1, z1, NUM_SUBCARRIER);
 
             // 信号を合成
             multiplexer(s1, z1, c1, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
@@ -855,7 +791,7 @@ void run_calc_time () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/time_%d-QAM_%d-subs(lsb_extended).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/time_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
 
     // 平均時間を初期化
     average_time = 0.0;
