@@ -21,7 +21,7 @@ typedef _Complex double complex;
 #define NUM_S (NUM_C - 6)                                           // sのビット数
 #define NUM_B 3                                                     // bのビット数
 #define NUM_Z 6                                                     // zのビット数
-#define NUM_SUBCARRIER 64                                           // サブキャリア数
+#define NUM_SUBCARRIER 1024                                           // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define CLIPPING_RATIO 0.2                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ

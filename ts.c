@@ -21,7 +21,7 @@ typedef _Complex double complex;
 #define NUM_S 1                                                     // sのビット数
 #define NUM_B (NUM_C - 2)                                           // bのビット数
 #define NUM_Z 2                                                     // zのビット数
-#define NUM_SUBCARRIER 64                                           // サブキャリア数
+#define NUM_SUBCARRIER 1024                                           // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
 
@@ -463,7 +463,7 @@ void run_calc_ber () {
             ber += count_be(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
 
             // 進捗を出力
-            fprintf(stderr, "Eb/N0 = %d, trial = %d, BER = %e   \r", ebn0, i, ber / (double)(i+1));
+            fprintf(stderr, "Eb/N0 = %d, trial = %d, BER = %e   \r", ebn0, i+1, ber / (double)(i+1));
         }
 
         // BERを計算

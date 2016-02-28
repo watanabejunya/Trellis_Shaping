@@ -17,7 +17,7 @@ typedef _Complex double complex;
 #define NUM_ARGUMENT 2                                              // 引数の数
 #define NUM_QAM 256                                                 // QAMのコンステレーション数
 #define NUM_D ((int)log2(NUM_QAM))                                  // dのビット数
-#define NUM_SUBCARRIER 64                                           // サブキャリア数
+#define NUM_SUBCARRIER 1024                                           // サブキャリア数
 #define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
