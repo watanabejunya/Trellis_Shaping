@@ -25,6 +25,8 @@ typedef _Complex double complex;
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
 
+int count_add = 0;
+int count_mul = 0;
 
 // マッピングを出力する
 void run_mapping () {
