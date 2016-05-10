@@ -5,8 +5,8 @@
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
-#include <sys/time.h>
 #include "lib_ts.h"
+#include "env.h"
 
 #ifndef TYPE_COMPLEX
 #define TYPE_COMPLEX
@@ -14,18 +14,21 @@
 typedef _Complex double complex;
 #endif
 
+#ifndef ENV_H
 #define NUM_ARGUMENT 2                                              // 引数の数
-#define NUM_OFDM 100000                                              // OFDMシンボルを送る回数
-#define NUM_QAM 256                                                  // QAMのコンステレーション数
-#define NUM_C ((int)log2(NUM_QAM))                                  // cのビット数
-#define NUM_D (NUM_C - 1)                                           // dのビット数
-#define NUM_S (NUM_C - 2)                                           // sのビット数
-#define NUM_B 1                                                     // bのビット数
-#define NUM_Z 2                                                     // zのビット数
-#define NUM_SUBCARRIER 1024                                           // サブキャリア数
+#define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
+#define NUM_D 3                                                     // QAMのコンステレーション数
+#define NUM_SUBCARRIER 1024                                         // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define CLIPPING_RATIO 1.6                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ
+#endif
+
+#define NUM_C (NUM_D + 1)                                           // cのビット数
+#define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
+#define NUM_S (NUM_C - 2)                                           // sのビット数
+#define NUM_B 1                                                     // bのビット数
+#define NUM_Z 2                                                     // zのビット数
 
 int count_add = 0;
 int count_mul = 0;
@@ -78,7 +81,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // 変調
@@ -109,7 +112,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // トレリスシェーピング
@@ -122,7 +125,7 @@ void run_mapping () {
     ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
     // マッピングを出力
-    fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
     print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // メモリ解放
@@ -170,7 +173,7 @@ void run_calc_papr_ccdf () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/prpr_ccdf_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (i = 0; i < NUM_OFDM; i++) {
         // 信号を生成
@@ -283,7 +286,7 @@ void run_calc_normalized_ccdf () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (i = 0; i < NUM_OFDM; i++) {
         // 信号を生成
@@ -393,7 +396,7 @@ void run_calc_clipping_ratio_characteristic () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (ratio = 0.1; ratio < 2.0; ratio += 0.1) {
 
@@ -508,7 +511,7 @@ void run_calc_slm_characteristic () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/slm_chara_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/slm_chara_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (num_slm = 1; num_slm <= 10; num_slm++) {
 
@@ -656,7 +659,7 @@ void run_calc_ber () {
     rate = (double)(NUM_D) / (double)(NUM_C);
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/ber_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ber_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     for (ebn0 = 6; ebn0 < 25; ebn0++) {
         // SNRを計算
@@ -770,101 +773,13 @@ void run_calc_ber () {
 }
 
 
-// 時間を計算する
-void run_calc_time () {
-    int *c;                                     // 符号語
-    complex *a;                                 // OFDMシンボル
-    complex *a_caf;                             // CAF後のOFDMシンボル
-    fftw_complex *f;                            // FFT用(周波数領域)
-    fftw_complex *t;                            // FFT用(時間領域)
-    clock_t start_time, end_time;               // 開始時間と終了時間
-    double average_time;                        // 平均実行時間
-    int i;                                      // ループカウンタ
-    FILE *fp;                                   // 出力用ファイルポインタ
-
-    // メモリの確保
-    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
-    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-
-    // 乱数の初期化
-    srandom((unsigned)time(NULL));
-
-    // 出力ファイルを開く
-    fp = fsopen("w", "./Result/time_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
-
-    // 平均時間を初期化
-    average_time = 0.0;
-
-    for (i = 0; i < NUM_OFDM; i++) {
-        // 信号を生成
-        make_signal(c, NUM_C * NUM_SUBCARRIER);
-
-        // 計測開始
-        start_time = clock();
-
-        // 変調
-        qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
-
-        // オーバーサンプリング
-        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-        // IFFT
-        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-        // クリッピング
-        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
-        // FFT
-        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
-
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
-        // ダウンサンプリング
-        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-        // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
-
-        // 計測終了
-        end_time = clock();
-
-        // 実行時間を足す
-        average_time += (double)(end_time - start_time) / CLOCKS_PER_SEC;
-
-        // 進捗を出力
-        fprintf(stderr, "trial = %d, average time = %e   \r", i+1, average_time / (double)(i+1));
-    }
-
-    // 平均時間を求める
-    average_time /= (double)NUM_OFDM;
-
-    // ファイル出力
-    fprintf(fp, "%e\n", average_time);
-
-    // 改行
-    printf("\n");
-
-    // メモリ解放
-    free(c);
-    free(a);
-    free(a_caf);
-    fftw_free(f);
-    fftw_free(t);
-}
-
-
-// 時間を計算する
+// 計算量を計算する
 void run_calc_cost () {
     int *c;                                     // 符号語
     complex *a;                                 // OFDMシンボル
     complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
@@ -878,46 +793,40 @@ void run_calc_cost () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/cost_%d-QAM_%d-subs(LSB).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/cost_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (i = 0; i < NUM_OFDM; i++) {
-        // 信号を生成
-        make_signal(c, NUM_C * NUM_SUBCARRIER);
+    // 信号を生成
+    make_signal(c, NUM_C * NUM_SUBCARRIER);
 
-        // 変調
-        qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
+    // 変調
+    qam_modulation_lsb(c, a, NUM_SUBCARRIER, NUM_QAM);
 
-        // オーバーサンプリング
-        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+    // オーバーサンプリング
+    over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-        // IFFT
-        ifftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+    // IFFT
+    ifftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-        // クリッピング
-        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+    // クリッピング
+    clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-        // FFT
-        fftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+    // FFT
+    fftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+    // 減衰を補償する
+    offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
-        // ダウンサンプリング
-        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+    // ダウンサンプリング
+    down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-        // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
-
-        // 進捗を出力
-        fprintf(stderr, "trial = %d, count add = %lf, count mul = %lf   \r", i+1, count_add / (double)(i+1), count_mul / (double)(i+1));
-    }
+    // トレリスシェーピング
+    trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
 
     // ファイル出力
-    fprintf(fp, "add: %lf\n", count_add / (double)NUM_OFDM);
-    fprintf(fp, "mul: %lf\n", count_mul / (double)NUM_OFDM);
-
-    // 改行
-    printf("\n");
+    printf("add: %d\n", count_add);
+    printf("mul: %d\n", count_mul);
+    fprintf(fp, "add: %d\n", count_add);
+    fprintf(fp, "mul: %d\n", count_mul);
 
     // メモリ解放
     free(c);
@@ -954,11 +863,8 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "ber") == 0) {
         printf("Make Eb/N0 - BER graph.\n");
         run_calc_ber();
-    } else if (strcmp(argv[1], "time") == 0) {
-        printf("Calculate time.\n");
-        run_calc_time();
     } else if (strcmp(argv[1], "cost") == 0) {
-        printf("Calculate cost");
+        printf("Calculate cost\n");
         run_calc_cost();
     } else {
         printf("Invalid argument\n");

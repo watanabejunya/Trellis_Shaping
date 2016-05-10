@@ -16,24 +16,36 @@
 typedef _Complex double complex;
 #endif
 
+#define EPSILON pow(10, -16)                // double型の値を0とみなす誤差
+#define FFTJ_FORWORD 1                      // FFTの向き(FFT)
+#define FFTJ_BACKWORD -1                    // FFTの向き(IFFT)
+
 /*
  * 変数
  */
 
- extern int count_add;
- extern int count_mul;
+extern int count_add;
+extern int count_mul;
 
 /*
  * 構造体
  */
 
-// ノードの定義
+// TSのノード
 typedef struct {
     int *a_index;
     complex *autocor;
     double metric;
     int pre_state;
 } node;
+
+// FFTJの設定
+typedef struct {
+    int size;                                   // FFTサイズ
+    int *index;                                 // ビットリバースした配列のインデックス
+    complex *w;                                 // 回転演算子
+    complex **data;                             // 計算用データ配列
+} fftj_plan;
 
 /*
  * 関数宣言
@@ -42,10 +54,17 @@ typedef struct {
 FILE *fsopen(const char *mode, const char *format, ...);
 double dadd(double a, double b);
 double dmul(double a, double b);
+double dsqr(double a);
 complex cadd(complex a, complex b);
 complex cmul(complex a, complex b);
-void fftj(int n, complex *in, complex *out);
-void ifftj(int n, complex *in, complex *out);
+double cmag(complex a);
+double cdis(complex a, complex b);
+complex cipr(complex a, complex b);
+fftj_plan fftj_plan_dft(int, complex *, complex *, int);
+void fftj_execute(fftj_plan);
+void fftj_destroy(fftj_plan);
+void fftj(int, complex *, complex *);
+void ifftj(int, complex *, complex *);
 void make_signal(int *x, int n);
 void gaussian_noise(complex *x, double sigma, int n);
 int count_be(int *x, int *y, int n);
@@ -128,15 +147,26 @@ FILE *fsopen(const char *mode, const char *format, ...) {
 
 double dadd(double a, double b)
 {
-    count_add++;
+    if (fabs(a) > EPSILON && fabs(b) > EPSILON) {
+        count_add++;
+    }
     return a + b;
 }
 
 
 double dmul(double a, double b)
 {
-    count_mul++;
+    if (fabs(a) > EPSILON && fabs(b) > EPSILON) {
+        count_mul++;
+    }
+
     return a * b;
+}
+
+
+double dsqr(double a)
+{
+    return dmul(a, a);
 }
 
 
@@ -152,141 +182,104 @@ complex cmul(complex a, complex b)
 }
 
 
-void fftj(int n, complex *in, complex *out)
+double cmag(complex a)
 {
-    int exponent = (int)log2(n);                        // nの冪指数
-    static int memory_flag;                             // メモリ管理フラグ
-    static int *index;                                  // ビットリバースした配列のインデックス
-    static complex *w;                                  // 回転演算子
-    static complex **data;                              // 計算用データ配列
-    int start, end;                                     // ビットリバースループで使う作業用変数
-    int j_roop, k_roop, half;                           // バタフライ演算で使う作業用変数
-    int tmp_index1, tmp_index2;                         // 一時的な配列のインデックス
-    int i, j, k;                                        // 作業用変数
-
-    if (memory_flag == 0) {
-        // 入力チェック
-        if (n < 2 || n != (int)pow(2.0, exponent)) {
-            fprintf(stderr, "n should be the k-th power of 2.\n");
-            exit(-1);
-        }
-
-        // メモリ確保
-        index = (int *) malloc(n * sizeof(int));
-        w = (complex *) malloc(n * sizeof(complex));
-        data = (complex **) malloc(n * exponent * sizeof(complex *));
-        for (i = 0; i <= exponent; i++) {
-            data[i] = (complex *)malloc(n * sizeof(complex));
-        }
-
-        // ビットリバースしたときのインデックスを作っておく
-        index[0] = 0;
-        for (i = 1; i <= exponent; i++) {
-            // ループの範囲を定める
-            start = (int)pow(2.0, i - 1);
-            end = (int)pow(2.0, i);
-
-            for (j = start; j < end; j++) {
-                // ビットリバースした値を求める
-                index[j] = index[j - start] + n / end;
-            }
-        }
-
-        // 回転因子の計算
-        for (i = 0; i < n; i++) {
-            w[i] = cexp(- I * 2.0 * M_PI * i / n);
-        }
-    }
-
-    // 入力をバタフライ演算用に入れ替える
-    for (i = 0; i < n; i++) {
-        data[0][i] = in[index[i]];
-    }
-
-    // バタフライ演算
-    for (i = 1; i <= exponent; i++) {
-        // ループの範囲を設定
-        j_roop = n / (int)pow(2.0, i);
-        k_roop = (int)pow(2.0, i);
-        half = k_roop / 2;
-
-        for (j = 0; j < j_roop; j++) {
-            for (k = 0; k < k_roop; k++) {
-                // 奇数行と偶数行でバタフライの演算の向きを変える
-                if (k < half) {
-                    tmp_index1 = j * k_roop + k;
-                    tmp_index2 = j * k_roop + k + half;
-                } else {
-                    tmp_index1 = j * k_roop + k - half;
-                    tmp_index2 = j * k_roop + k;
-                }
-                data[i][j * k_roop + k] = data[i-1][tmp_index1] + data[i-1][tmp_index2] * w[k * j_roop];
-            }
-        }
-    }
-
-    // データを正規化
-    for (i = 0; i < n; i++) {
-        out[i] = data[exponent][i];// / sqrt(n);
-    }
+    return dadd(dsqr(creal(a)), dsqr(cimag(a)));
 }
 
 
-void ifftj(int n, complex *in, complex *out)
+double cdis(complex a, complex b)
 {
-    int exponent = (int)log2(n);                        // nの冪指数
-    static int memory_flag;                             // メモリ管理フラグ
-    static int *index;                                  // ビットリバースした配列のインデックス
-    static complex *w;                                  // 回転演算子
-    static complex **data;                              // 計算用データ配列
-    int start, end;                                     // ビットリバースループで使う作業用変数
+    return cmag(cadd(a, - b));
+}
+
+complex cipr(complex a, complex b)
+{
+    return cmul(conj(a), b);
+}
+
+
+/**
+ * FFTの回転因子，ビット逆順を計算し，FFTの設定を行う
+ *
+ * @param  int                  n            FFTサイズ
+ * @param  _Complex double*     in           入力データ
+ * @param  _Complex double*     out          出力データ
+ * @param  int                  type         FFTかIFFTかの選択
+ * @return fftj_plan                         FFTの設定
+ */
+fftj_plan fftj_plan_dft(int n, complex *in, complex *out, int type)
+{
+    const int exponent = (int) log2(n);             // nの冪指数
+    const double sign = type == 1 ? -1.0 : 1.0;     // 1.0 or -1.0
+    fftj_plan plan;                                 // FFTの設定
+    int i, j;                                       // ループカウンタ
+    int start, end;                                 // ビットリバースループで使う作業用変数
+
+    // 入力チェック
+    if (n < 2 || n != (int) pow(2.0, exponent)) {
+        fprintf(stderr, "n should be the k-th power of 2.\n");
+        exit(-1);
+    }
+    if (type != 1 && type != -1) {
+        fprintf(stderr, "type should be 1 or -1.\n");
+        exit(-1);
+    }
+
+    // サイズの設定
+    plan.size = n;
+
+    // メモリ確保
+    plan.index = (int *) malloc(n * sizeof(int));
+    plan.w = (complex *) malloc(n * sizeof(complex));
+    plan.data = (complex **) malloc((exponent+1) * sizeof(complex *));
+    for (i = 0; i < exponent; i++) {
+        plan.data[i] = (complex *) malloc(n * sizeof(complex));
+    }
+    plan.data[exponent] = out;
+
+    // ビットリバースしたときのインデックスを作っておく
+    plan.index[0] = 0;
+    for (i = 1; i <= exponent; i++) {
+        // ループの範囲を定める
+        start = (int)pow(2.0, i - 1);
+        end = (int)pow(2.0, i);
+
+        for (j = start; j < end; j++) {
+            // ビットリバースした値を求める
+            plan.index[j] = plan.index[j - start] + n / end;
+        }
+    }
+
+    // 回転因子の計算
+    for (i = 0; i < n; i++) {
+        plan.w[i] = cexp(sign * I * 2.0 * M_PI * i / n);
+    }
+
+    // 入力をバタフライ演算用に入れ替えてセットしておく
+    for (i = 0; i < n; i++) {
+        plan.data[0][i] = in[plan.index[i]];
+    }
+
+    return plan;
+}
+
+
+/**
+ * FFT(IFFT)を実行する
+ *
+ * @param plan      FFTの設定
+ */
+void fftj_execute(fftj_plan plan)
+{
+    const int exponent = (int) log2(plan.size);         // FFTサイズの冪指数
     int j_roop, k_roop, half;                           // バタフライ演算で使う作業用変数
     int tmp_index1, tmp_index2;                         // 一時的な配列のインデックス
-    int i, j, k;                                        // 作業用変数
+    int i, j, k;                                        // ループカウンタ
 
-    if (memory_flag == 0) {
-        // 入力チェック
-        if (n < 2 || n != (int)pow(2.0, exponent)) {
-            fprintf(stderr, "n should be the k-th power of 2.\n");
-            exit(-1);
-        }
-
-        // メモリ確保
-        index = (int *) malloc(n * sizeof(int));
-        w = (complex *) malloc(n * sizeof(complex));
-        data = (complex **) malloc(n * exponent * sizeof(complex *));
-        for (i = 0; i <= exponent; i++) {
-            data[i] = (complex *)malloc(n * sizeof(complex));
-        }
-
-        // ビットリバースしたときのインデックスを作っておく
-        index[0] = 0;
-        for (i = 1; i <= exponent; i++) {
-            // ループの範囲を定める
-            start = (int)pow(2.0, i - 1);
-            end = (int)pow(2.0, i);
-
-            for (j = start; j < end; j++) {
-                // ビットリバースした値を求める
-                index[j] = index[j - start] + n / end;
-            }
-        }
-
-        // 回転因子の計算
-        for (i = 0; i < n; i++) {
-            w[i] = cexp(I * 2.0 * M_PI * i / n);
-        }
-    }
-
-    // 入力をバタフライ演算用に入れ替える
-    for (i = 0; i < n; i++) {
-        data[0][i] = in[index[i]];
-    }
-
-    // バタフライ演算
     for (i = 1; i <= exponent; i++) {
         // ループの範囲を設定
-        j_roop = n / (int)pow(2.0, i);
+        j_roop = plan.size / (int)pow(2.0, i);
         k_roop = (int)pow(2.0, i);
         half = k_roop / 2;
 
@@ -300,15 +293,77 @@ void ifftj(int n, complex *in, complex *out)
                     tmp_index1 = j * k_roop + k - half;
                     tmp_index2 = j * k_roop + k;
                 }
-                data[i][j * k_roop + k] = data[i-1][tmp_index1] + data[i-1][tmp_index2] * w[k * j_roop];
+                plan.data[i][j * k_roop + k] = cadd(plan.data[i-1][tmp_index1], cmul(plan.data[i-1][tmp_index2], plan.w[k * j_roop]));
             }
         }
     }
 
+}
+
+
+/**
+ * FFTの際に使ったメモリを解放する
+ *
+ * @param   fftj_plan   plan        FFTの設定
+ */
+void fftj_destroy(fftj_plan plan)
+{
+    const int exponent = (int) log2(plan.size);             // nの冪指数
+    int i;                                          // ループカウンタ
+
+    free(plan.index);
+    free(plan.w);
+    for (i = 0; i < exponent; i++) {
+        free(plan.data[i]);
+    }
+    free(plan.data);
+}
+
+
+/**
+ * FFTを行い正規化する
+ * @param  int                  n            FFTサイズ
+ * @param  _Complex double*     in           入力データ
+ * @param  _Complex double*     out          出力データ
+ */
+void fftj(int n, complex *in, complex *out)
+{
+    fftj_plan plan;                     // FFTの設定
+    int i;                              // ループカウンタ
+
+    plan = fftj_plan_dft(n, in, out, FFTJ_FORWORD);
+
+    fftj_execute(plan);
+
     // データを正規化
     for (i = 0; i < n; i++) {
-        out[i] = data[exponent][i];// / sqrt(n);
+        out[i] /= sqrt(n);
     }
+
+    fftj_destroy(plan);
+}
+
+/**
+ * IFFTを行い正規化する
+ * @param  int                  n            FFTサイズ
+ * @param  _Complex double*     in           入力データ
+ * @param  _Complex double*     out          出力データ
+ */
+void ifftj(int n, complex *in, complex *out)
+{
+    fftj_plan plan;                     // FFTの設定
+    int i;                              // ループカウンタ
+
+    plan = fftj_plan_dft(n, in, out, FFTJ_BACKWORD);
+
+    fftj_execute(plan);
+
+    // データを正規化
+    for (i = 0; i < n; i++) {
+        out[i] /= sqrt(n);
+    }
+
+    fftj_destroy(plan);
 }
 
 
@@ -1440,12 +1495,14 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type) {
 
                 // 第2項
                 for (l = 1; l <= i-2; l++) {
-                    branch_metric += 2.0 * creal(conj(nodes[i-1][state].autocor[l]) * delta_table1[tmp_index][nodes[i-1][state].a_index[i-1-l]]);
+                    branch_metric = dadd(branch_metric, dmul(2.0, creal(cipr(nodes[i-1][state].autocor[l], delta_table1[tmp_index][nodes[i-1][state].a_index[i-1-l]]))));
                 }
 
                 // 第3項
-                for (l = 1; l <= i-1; l++) {
-                    branch_metric +=  delta_table2[tmp_index][nodes[i-1][state].a_index[i-1-l]];
+                if (type == 2) {
+                    for (l = 1; l <= i-1; l++) {
+                        branch_metric =  dadd(branch_metric, delta_table2[tmp_index][nodes[i-1][state].a_index[i-1-l]]);
+                    }
                 }
 
                 // パスの選択
@@ -1562,7 +1619,7 @@ void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
@@ -1670,7 +1727,7 @@ void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
@@ -1738,7 +1795,7 @@ void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
@@ -1844,7 +1901,7 @@ void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(cadd(a_caf[sub], - constellation[tmp_index])), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
@@ -1908,7 +1965,7 @@ void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {
@@ -1972,7 +2029,7 @@ void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
                 }
 
                 // ブランチメトリックを求める
-                branch_metric = pow(cabs(a_caf[sub] - constellation[tmp_index]), 2.0);
+                branch_metric = cdis(a_caf[sub], constellation[tmp_index]);
 
                 // パスの選択
                 if (nodes[i-1][state].metric + branch_metric < nodes[i][next_state[state][input]].metric) {

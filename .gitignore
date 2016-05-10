@@ -8,3 +8,6 @@
 !*.c
 !*.h
 !*.sh
+
+# ignore env.h
+env.h

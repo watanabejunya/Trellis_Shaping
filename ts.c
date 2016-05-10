@@ -6,6 +6,7 @@
 #include <complex.h>
 #include <fftw3.h>
 #include "lib_ts.h"
+#include "env.h"
 
 #ifndef TYPE_COMPLEX
 #define TYPE_COMPLEX
@@ -13,17 +14,20 @@
 typedef _Complex double complex;
 #endif
 
+#ifndef ENV_H
 #define NUM_ARGUMENT 2                                              // 引数の数
 #define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
-#define NUM_QAM 256                                                 // QAMのコンステレーション数
-#define NUM_C ((int)log2(NUM_QAM))                                  // cのビット数
-#define NUM_D (NUM_C - 1)                                           // dのビット数
-#define NUM_S 1                                                     // sのビット数
-#define NUM_B (NUM_C - 2)                                           // bのビット数
-#define NUM_Z 2                                                     // zのビット数
+#define NUM_D 3                                                     // QAMのコンステレーション数
 #define NUM_SUBCARRIER 1024                                           // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
+#endif
+
+#define NUM_C (NUM_D + 1)                                           // cのビット数
+#define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
+#define NUM_S 1                                                     // sのビット数
+#define NUM_B (NUM_C - 2)                                           // bのビット数
+#define NUM_Z 2                                                     // zのビット数
 
 int count_add = 0;
 int count_mul = 0;
@@ -567,6 +571,46 @@ void run_calc_time () {
 }
 
 
+// 計算量を計算する
+void run_calc_cost () {
+    int *c;                                     // 符号語
+    complex *a;                                 // OFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/cost_%d-QAM_%d-subs(TS).dat", NUM_QAM, NUM_SUBCARRIER);
+
+    // 信号を生成
+    make_signal(c, NUM_C * NUM_SUBCARRIER);
+
+    // トレリスシェーピング
+    trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+
+    // ファイル出力
+    printf("add: %d\n", count_add);
+    printf("mul: %d\n", count_mul);
+    fprintf(fp, "add: %d\n", count_add);
+    fprintf(fp, "mul: %d\n", count_mul);
+
+    // メモリ解放
+    free(c);
+    free(a);
+    fftw_free(f);
+    fftw_free(t);
+}
+
+
 int main (int argc,char *argv[]) {
     // 入力チェック
     if (argc != NUM_ARGUMENT) {
@@ -593,6 +637,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "time") == 0) {
         printf("Calculate time.\n");
         run_calc_time();
+    } else if (strcmp(argv[1], "cost") == 0) {
+        printf("Calculate cost.\n");
+        run_calc_cost();
     } else {
         printf("Invalid argument\n");
         exit(-1);
