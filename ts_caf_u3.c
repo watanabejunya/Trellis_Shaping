@@ -24,8 +24,8 @@ typedef _Complex double complex;
 #define MAPPING_TYPE 1                                              // マッピングタイプ
 #endif
 
-#define NUM_C (NUM_D + 2)                                           // QAMのコンステレーション数
-#define NUM_QAM (pow(2.0, NUM_C))                                   // cのビット数
+#define NUM_C (NUM_D + 3)                                           // QAMのコンステレーション数
+#define NUM_QAM ((int)pow(2.0, NUM_C))                                   // cのビット数
 #define NUM_S (NUM_C - 6)                                           // sのビット数
 #define NUM_B 3                                                     // bのビット数
 #define NUM_Z 6                                                     // zのビット数
@@ -764,6 +764,93 @@ void run_calc_ber () {
 }
 
 
+// 時間を計算する
+void run_calc_time () {
+    int *c;                                     // 符号語
+    complex *a;                                 // OFDMシンボル
+    complex *a_caf;                             // CAF後のOFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    clock_t start_time, end_time;               // 開始時間と終了時間
+    double average_time;                        // 平均実行時間
+    int i;                                      // ループカウンタ
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/time_%d-QAM_%d-subs(TS_CAF_U3).dat", NUM_QAM, NUM_SUBCARRIER);
+
+    // 平均時間を初期化
+    average_time = 0.0;
+
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(c, NUM_C * NUM_SUBCARRIER);
+
+        // 計測開始
+        start_time = clock();
+
+        // 変調
+        qam_modulation_lsb3(c, a, NUM_SUBCARRIER, NUM_QAM);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // クリッピング
+        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // FFT
+        fftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+
+        // 減衰を補償する
+        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // ダウンサンプリング
+        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // トレリスシェーピング
+        trellis_shaping_caf3(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+
+        // 計測終了
+        end_time = clock();
+
+        // 実行時間を足す
+        average_time += (double)(end_time - start_time) / CLOCKS_PER_SEC;
+
+        // 進捗を出力
+        fprintf(stderr, "trial = %d, average time = %e   \r", i+1, average_time / (double)(i+1));
+    }
+
+    // 平均時間を求める
+    average_time /= (double)NUM_OFDM;
+
+    // ファイル出力
+    fprintf(fp, "%e\n", average_time);
+
+    // 改行
+    printf("\n");
+
+    // メモリ解放
+    free(c);
+    free(a);
+    free(a_caf);
+    fftw_free(f);
+    fftw_free(t);
+}
+
+
 // 計算量を計算する
 void run_calc_cost () {
     int *c;                                     // 符号語
@@ -854,6 +941,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "ber") == 0) {
         printf("Make Eb/N0 - BER graph.\n");
         run_calc_ber();
+    } else if (strcmp(argv[1], "time") == 0) {
+        printf("Calculate time\n");
+        run_calc_time();
     } else if (strcmp(argv[1], "cost") == 0) {
         printf("Calculate cost\n");
         run_calc_cost();

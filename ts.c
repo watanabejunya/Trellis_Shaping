@@ -540,12 +540,6 @@ void run_calc_time () {
         // 計測終了
         end_time = clock();
 
-        // オーバーサンプリング
-        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-        // IFFT
-        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
         // 実行時間を足す
         average_time += (double)(end_time - start_time) / CLOCKS_PER_SEC;
 

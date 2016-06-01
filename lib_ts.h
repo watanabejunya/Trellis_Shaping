@@ -16,7 +16,6 @@
 typedef _Complex double complex;
 #endif
 
-#define EPSILON pow(10, -16)                // double型の値を0とみなす誤差
 #define FFTJ_FORWORD 1                      // FFTの向き(FFT)
 #define FFTJ_BACKWORD -1                    // FFTの向き(IFFT)
 
@@ -147,19 +146,14 @@ FILE *fsopen(const char *mode, const char *format, ...) {
 
 double dadd(double a, double b)
 {
-    if (fabs(a) > EPSILON && fabs(b) > EPSILON) {
-        count_add++;
-    }
+    count_add++;
     return a + b;
 }
 
 
 double dmul(double a, double b)
 {
-    if (fabs(a) > EPSILON && fabs(b) > EPSILON) {
-        count_mul++;
-    }
-
+    count_mul++;
     return a * b;
 }
 
