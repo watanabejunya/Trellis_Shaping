@@ -3,11 +3,12 @@
 # ignore all
 /*
 
-# allow any
+# allow bellow
 !.gitignore
 !*.c
 !*.h
 !*.sh
+!/Figures/
 
 # ignore env.h
 env.h
