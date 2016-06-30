@@ -860,27 +860,33 @@ void run_calc_time () {
 }
 
 
-// 計算量を計算する
-void run_calc_cost () {
+void test ()
+{
     int *c;                                     // 符号語
     complex *a;                                 // OFDMシンボル
     complex *a_caf;                             // CAF後のOFDMシンボル
+    complex *h;                                 // CAFの非線形歪み
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    FILE *fp;                                   // 出力用ファイルポインタ
+    double *amp_pmf, *phase_pmf;                // 振幅と位相のPMF
+    FILE *fp1, *fp2;                            // 出力用ファイルポインタ
 
     // メモリの確保
     c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    h = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    amp_pmf = (double *)malloc(100 * sizeof(double));
+    phase_pmf = (double *)malloc(100 * sizeof(double));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/cost_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp1 = fsopen("w", "./Result/amp_pmf_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp2 = fsopen("w", "./Result/phase_pmf_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
     // 信号を生成
     make_signal(c, NUM_C * NUM_SUBCARRIER);
@@ -900,29 +906,24 @@ void run_calc_cost () {
     // FFT
     fftj(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-    // 減衰を補償する
-    offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
     // ダウンサンプリング
     down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-    // トレリスシェーピング
-    trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+    // 減衰を補償する
+    offset_attenuation(a, NUM_SUBCARRIER, 1.0 / CLIPPING_RATIO);
 
-    // ファイル出力
-    printf("add: %d\n", count_add);
-    printf("mul: %d\n", count_mul);
-    fprintf(fp, "add: %d\n", count_add);
-    fprintf(fp, "mul: %d\n", count_mul);
+    // H_kを計算する
+    for (int i = 0; i < NUM_SUBCARRIER; i++) {
+        h[i] = a_caf[i] - a[i];
+    }
 
-    // メモリ解放
-    free(c);
-    free(a);
-    free(a_caf);
-    fftw_free(f);
-    fftw_free(t);
+    calc_amp_phase_pmf(h, amp_pmf, phase_pmf, NUM_SUBCARRIER, 100);
+
+    for (int i = 0; i < 100; i++) {
+        fprintf(fp1, "%d %lf\n", i, amp_pmf[i]);
+        fprintf(fp2, "%d %lf\n", i, phase_pmf[i]);
+    }
 }
-
 
 int main (int argc,char *argv[]) {
     // 入力チェック
@@ -953,9 +954,8 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "time") == 0) {
         printf("Calculate time\n");
         run_calc_time();
-    } else if (strcmp(argv[1], "cost") == 0) {
-        printf("Calculate cost\n");
-        run_calc_cost();
+    } else if (strcmp(argv[1], "test") == 0) {
+        test();
     } else {
         printf("Invalid argument\n");
         exit(-1);
