@@ -20,10 +20,10 @@ typedef _Complex double complex;
 #define NUM_D 5                                                     // QAMのコンステレーション数
 #define NUM_SUBCARRIER 1024                                           // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
-#define CLIPPING_RATIO 0.2                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ
 #endif
 
+#define CLIPPING_RATIO 0.2                                          // クリッピングの閾値
 #define NUM_C (NUM_D + 3)                                           // QAMのコンステレーション数
 #define NUM_QAM ((int)pow(2.0, NUM_C))                                   // cのビット数
 #define NUM_S (NUM_C - 6)                                           // sのビット数

@@ -5,8 +5,12 @@
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
-#include "lib_ts.h"
 #include "env.h"
+#include "lib_base.h"
+#include "lib_ts.h"
+#include "lib_caf.h"
+#include "lib_peak.h"
+#include "lib_amp.h"
 
 #ifndef TYPE_COMPLEX
 #define TYPE_COMPLEX
@@ -69,7 +73,7 @@ void run_mapping () {
     multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
 
     // 変調
-    qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+    ts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
     // オーバーサンプリング
     over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -565,41 +569,96 @@ void run_calc_time () {
 }
 
 
-// 計算量を計算する
-void run_calc_cost () {
+void run_calc_amp_efficiency()
+{
+    int *d;                                     // 情報ビット
+    int *s, *z;                                 // 上位情報ビット
+    int *b;                                     // 下位情報ビット
     int *c;                                     // 符号語
+    int *x, *y;                                 // インタリーバ
     complex *a;                                 // OFDMシンボル
+    complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
+    complex *t_amp;                             // 増幅後の信号
+    double ibo;                                 // IBOとOBO
+    double efficiency;                          // 増幅器効率
+    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
+    d = (int *)malloc(NUM_D * NUM_SUBCARRIER * sizeof(int));
+    s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    x = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t_amp = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/cost_%d-QAM_%d-subs(TS).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    // 信号を生成
-    make_signal(c, NUM_C * NUM_SUBCARRIER);
+    for (ibo = -4.0; ibo <= 8.0; ibo += 0.5) {
+        // 初期化
+        efficiency = 0;
 
-    // トレリスシェーピング
-    trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+        for (i = 0; i < NUM_OFDM; i++) {
+            // 信号を生成
+            make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-    // ファイル出力
-    printf("add: %d\n", count_add);
-    printf("mul: %d\n", count_mul);
-    fprintf(fp, "add: %d\n", count_add);
-    fprintf(fp, "mul: %d\n", count_mul);
+            // 信号を分離
+            demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+
+            // 符号化
+            inverse_parity_check_encoding(s, z, NUM_SUBCARRIER);
+
+            // 信号を合成
+            multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
+
+            // トレリスシェーピング
+            trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+
+            // オーバーサンプリング
+            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+            // IFFT
+            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+            // 増幅器に通す
+            solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
+
+            // 増幅器効率を計算
+            efficiency += calc_amplifier_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, "a");
+
+            // 進捗を出力
+            fprintf(stderr, "ibo = %.1lf [dB] trial = %d efficiency = %lf  \r", ibo, i+1, efficiency / (double)(i+1) * 100.0);
+        }
+
+        // ファイル出力
+        fprintf(fp, "%.1lf %lf\n", ibo, efficiency / (double)NUM_OFDM * 100.0);
+
+        // 改行
+        printf("\n");
+    }
 
     // メモリ解放
+    free(d);
+    free(s);
+    free(z);
+    free(b);
+    free(x);
+    free(y);
     free(c);
     free(a);
+    free(a_caf);
     fftw_free(f);
     fftw_free(t);
 }
@@ -631,9 +690,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "time") == 0) {
         printf("Calculate time.\n");
         run_calc_time();
-    } else if (strcmp(argv[1], "cost") == 0) {
+    } else if (strcmp(argv[1], "eff") == 0) {
         printf("Calculate cost.\n");
-        run_calc_cost();
+        run_calc_amp_efficiency();
     } else {
         printf("Invalid argument\n");
         exit(-1);

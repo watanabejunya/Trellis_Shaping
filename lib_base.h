@@ -28,7 +28,7 @@ void copy_int(int *x, int *x_copy, int n);
 void copy_complex(complex *x, complex *x_copy, int n);
 void xor_addition(int *x, int *y, int n);
 int convert_binary_into_decimal(int *b, int n);
-void convert_decimal_into_binary(int d, int *b);
+void convert_decimal_into_binary(int d, int *b, int n);
 int check_power_of_2(int n);
 void make_signal(int *x, int n);
 void joint_signal(complex *x, complex *y, int n, int m);
@@ -64,8 +64,8 @@ void ifft(int n, fftw_complex *in, fftw_complex *out);
 void over_sampling(complex *x, fftw_complex *y, int j, int n);
 void down_sampling(fftw_complex *x, complex *y, int j, int n);
 double calc_average_power(complex *a, int n);
+double calc_average_amplitude(complex *a, int n);
 void calc_amp_phase_pmf(complex *x, double *amp_pmf, double *phase_pmf, int n, int m);
-void calc_power_spectral_density(complex *x, double *psd, int n, int j, int l);
 
 
 /**
@@ -205,13 +205,12 @@ int convert_binary_into_decimal(int *b, int n)
 }
 
 
-void convert_decimal_into_binary(int d, int *b)
+void convert_decimal_into_binary(int d, int *b, int n)
 {
-    const int num_bit = (int)floor(log2(d));
     int i;
 
-    for (i = 0; i < num_bit; i++) {
-        b[num_bit - i] = d & 1;
+    for (i = 0; i < n; i++) {
+        b[n - 1 - i] = d & 1;
         d >>= 1;
     }
 }
@@ -219,7 +218,7 @@ void convert_decimal_into_binary(int d, int *b)
 
 int check_power_of_2(int n)
 {
-    if (n > 0 && (n ^ (n-1)) == 0) {
+    if (n > 0 && (n & (n-1)) == 0) {
         return 1;
     }
     return 0;
@@ -721,13 +720,29 @@ void down_sampling (complex *y, complex *x, int j, int n) {
 }
 
 
-double calc_average_power (complex *a, int n) {
+double calc_average_power (complex *a, int n)
+{
     int i;                             // ループカウンタ
     double average = 0;                // ピーク電力と平均電力
 
     for (i = 0; i < n; i++) {
         // 平均の計算
         average += pow(cabs(a[i]), 2.0) / (double)n;
+    }
+
+    // 比を返す
+    return average;
+}
+
+
+double calc_average_amplitude (complex *a, int n)
+{
+    int i;                             // ループカウンタ
+    double average = 0;                // ピーク電力と平均電力
+
+    for (i = 0; i < n; i++) {
+        // 平均の計算
+        average += cabs(a[i]) / (double)n;
     }
 
     // 比を返す
@@ -778,32 +793,6 @@ void calc_amp_phase_pmf (complex *x, double *amp_pmf, double *phase_pmf, int n, 
 
     free(amp);
     free(phase);
-}
-
-
-void calc_power_spectral_density(complex *x, double *psd, int n, int j, int l)
-{
-    static int memory_flag;             // メモリ管理フラグ
-    const int m = n * j;                // 系列長
-    int i;                              // ループカウンタ
-
-    if (memory_flag == 0) {
-        // 初期化
-        for (i = 0; i < n; i++) {
-            psd[i] = 0;
-        }
-
-        memory_flag = 1;
-    }
-
-    // average_power = calc_average_power(x, n);
-    for (i = 0; i < n/2; i++) {
-        psd[i] += pow(cabs(x[i + m - n/2]), 2.0) / (double)l;
-    }
-
-    for (; i < n; i++) {
-        psd[i] += pow(cabs(x[i - n/2]), 2.0) / (double)l;
-    }
 }
 
 

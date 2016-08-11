@@ -296,7 +296,7 @@ void construct_constellation (complex *constellation, int m, int type) {
     int i;
 
     for (i = 0; i < m; i++) {
-        convert_decimal_into_binary(i, bits);
+        convert_decimal_into_binary(i, bits, num_bit);
 
         if (m == 4) {
             constellation[i] = map_qpsk(bits[0], bits[1]);
@@ -325,13 +325,13 @@ void construct_constellation (complex *constellation, int m, int type) {
 // トレリスシェイピングの変調
 void cbts_qam_modulation (int *c, complex *a, int n, int m_m, int m_l, int type) {
     // コンステレーション数のチェック
-    if (check_power_of_4(m_l) == 0 || m_l > 64) {
-        printf("invalid number of constellation.\n");
+    if (check_power_of_4(m_m) == 0 || m_m > 64) {
+        printf("invalid number of constellation!!.\n");
         exit(-1);
     }
 
     // コンステレーション数のチェック
-    if (check_power_of_4(m_m) == 0 || m_m * m_l > 256) {
+    if (check_power_of_4(m_l) == 0 || m_m * m_l > 256) {
         printf("invalid number of constellation.\n");
         exit(-1);
     }
@@ -353,21 +353,21 @@ void cbts_qam_modulation (int *c, complex *a, int n, int m_m, int m_l, int type)
             bits[j] = c[num_code_bit * i + j];
         }
 
-        if (num_info_bit == 4) {
+        if (m_m == 4) {
             a[i] = map_qpsk(bits[0], bits[1]) * scaling_size;
-        } if (num_info_bit == 16) {
+        } if (m_m == 16) {
             if (type == 1) {
                 a[i] = map_16qam_type1(bits[0], bits[1], bits[2], bits[3]) * scaling_size;
             } else {
                 a[i] = map_16qam_type2(bits[0], bits[1], bits[2], bits[3]) * scaling_size;
             }
-        } else if (num_info_bit == 64) {
+        } else if (m_m == 64) {
             if (type == 1) {
                 a[i] = map_64qam_type1(bits[0], bits[1], bits[2], bits[3], bits[4], bits[5]) * scaling_size;
             } else {
                 a[i] = map_64qam_type2(bits[0], bits[1], bits[2], bits[3], bits[4], bits[5]) * scaling_size;
             }
-        } else if (num_info_bit == 256) {
+        } else if (m_m == 256) {
             if (type == 1) {
                 a[i] = map_256qam_type1(bits[0], bits[1], bits[2], bits[3], bits[4], bits[5], bits[6], bits[7]) * scaling_size;
             } else {
@@ -434,7 +434,7 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type) {
 
     if (memory_flag == 0) {
         // コンステレーション数のチェック
-        if (m != 16 && m != 64 && m != 256) {
+        if (check_power_of_4(m) == 0 || m > 256) {
             printf("invalid number of constellation.\n");
             exit(-1);
         }

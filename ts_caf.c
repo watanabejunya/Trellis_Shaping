@@ -26,11 +26,10 @@ typedef _Complex double complex;
 #define NUM_D 3                                                     // QAMのコンステレーション数
 #define NUM_SUBCARRIER 1024                                         // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
-#define CLIPPING_RATIO 1.3                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ
 #endif
 
-
+#define CLIPPING_RATIO 1.3                                          // クリッピングの閾値
 #define NUM_C (NUM_D + 1)                                           // cのビット数
 #define NUM_S (NUM_C - 2)                                           // sのビット数
 #define NUM_B 1                                                     // bのビット数
@@ -38,6 +37,7 @@ typedef _Complex double complex;
 #define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
 #define NUM_QAM_LSB ((int)pow(4.0, NUM_B))                          // MSBのコンステレーション数
 #define NUM_QAM_MSB (NUM_QAM / NUM_QAM_LSB)                         // LSBのコンステレーション数
+#define IBO 4.0                                                     //
 
 
 // マッピングを出力する
@@ -878,11 +878,9 @@ void run_calc_amp_efficiency()
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
     complex *t_amp;                             // 増幅後の信号
-    complex *t_ave;                             // 入力信号の平均電力
-    double ibo;                            // IBOとOBO
-    double p_rf, p_dc;                          //
+    double ibo;                                 // IBOとOBO
     double efficiency;                          // 増幅器効率
-    int j;                                   // ループカウンタ
+    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
@@ -898,19 +896,18 @@ void run_calc_amp_efficiency()
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t_amp = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
-    t_ave = (complex *)malloc(1 * sizeof(complex));
 
     // 乱数の初期化
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/slm_chara_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (ibo = -4.0; ibo <= 8.0; ibo += 0.2) {
+    for (ibo = -4.0; ibo <= 8.0; ibo += 0.5) {
         // 初期化
         efficiency = 0;
 
-        for (j = 0; j < NUM_OFDM; j++) {
+        for (i = 0; i < NUM_OFDM; i++) {
             // 信号を生成
             make_signal(d, NUM_D * NUM_SUBCARRIER);
 
@@ -919,15 +916,6 @@ void run_calc_amp_efficiency()
 
             // 符号化
             inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
-
-            // インタリーバを生成
-            make_signal(x, NUM_B * NUM_SUBCARRIER);
-
-            // インタリーバを符号化
-            convolutional_encoding(x, y, NUM_SUBCARRIER);
-
-            // 信号をインタリーブする
-            xor_addition(z, y, NUM_Z * NUM_SUBCARRIER);
 
             // 信号を合成
             multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
@@ -962,28 +950,18 @@ void run_calc_amp_efficiency()
             // IFFT
             ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-            // 平均電力を求める
-            t_ave[0] = calc_average_power(t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-
-            // P_DCを求める
-            solid_state_power_amplifier(t_ave, t_amp, 1, ibo);
-            p_dc = t_amp[0];
-
-            // 平均電力を求める
+            // 増幅器に通す
             solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
 
-            // P_RFを求める
-            p_rf = calc_average_power(t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-
             // 増幅器効率を計算
-            efficiency += p_rf / p_dc;
+            efficiency += calc_amplifier_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, "a");
 
             // 進捗を出力
-            fprintf(stderr, "ibo = %lf [dB] trial = %d efficiency = %lf   \r", ibo, j+1, efficiency);
+            fprintf(stderr, "ibo = %.1lf [dB] trial = %d efficiency = %lf  \r", ibo, i+1, efficiency / (double)(i+1) * 100.0);
         }
 
         // ファイル出力
-        fprintf(fp, "%lf %lf\n", ibo, efficiency);
+        fprintf(fp, "%.1lf %lf\n", ibo, efficiency / (double)NUM_OFDM * 100.0);
 
         // 改行
         printf("\n");
@@ -1015,9 +993,10 @@ void run_calc_out_of_band_radiation()
     complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
-    fftw_complex *t_ofdm, *f_ofdm;              // OFDM信号
+    complex *t_amp;                             // 増幅後の信号
+    double ibo = IBO;                           // IBO
     double *psd;                                // 電力密度スペクトル
-    int i, j;                                   // ループカウンタ
+    int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
 
     // メモリの確保
@@ -1032,8 +1011,7 @@ void run_calc_out_of_band_radiation()
     a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    f_ofdm = (fftw_complex *)fftw_malloc(NUM_OFDM * OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    t_ofdm = (fftw_complex *)fftw_malloc(NUM_OFDM * OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t_amp = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
     psd = (double *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(double));
 
     // 乱数の初期化
@@ -1042,60 +1020,60 @@ void run_calc_out_of_band_radiation()
     // 出力ファイルを開く
     fp = fsopen("w", "./Result/out_of_band_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
 
-    for (i = 0; i < 10000; i++) {
-        for (j = 0; j < NUM_OFDM; j++) {
-            // 信号を生成
-            make_signal(d, NUM_D * NUM_SUBCARRIER);
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
 
-            // 信号を分離
-            demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
 
-            // 符号化
-            inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
+        // 符号化
+        inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
 
-            // 信号を合成
-            multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
+        // 信号を合成
+        multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
-            // 変調
-            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+        // 変調
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
 
-            // オーバーサンプリング
-            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
-            // IFFT
-            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
-            // クリッピング
-            clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
-            // FFT
-            fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
-
-            // 減衰を補償する
-            offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
-            // ダウンサンプリング
-            down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-            // トレリスシェーピング
-            trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
-
-            // オーバーサンプリング
-            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-            // IFFT
-            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-            // OFDMの時間信号を連結
-            joint_signal(t_ofdm, t, j * OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-        }
+        // クリッピング
+        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
 
         // FFT
-        fft(NUM_OFDM * OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t_ofdm, f_ofdm);
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+
+        // 減衰を補償する
+        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // ダウンサンプリング
+        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // トレリスシェーピング
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // 増幅器に通す
+        solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
+
+        // FFT
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t_amp, f);
 
         // 平均を求める
-        calc_power_spectral_density(f_ofdm, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, NUM_OFDM, 10000);
+        calc_power_spectral_density(f, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, NUM_OFDM);
 
+    print_map(fp, f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    exit(-1);
         // 進捗を出力
         fprintf(stderr, "trial = %d  \r", i+1);
     }
@@ -1169,7 +1147,8 @@ void test ()
     }
 }
 
-int main (int argc,char *argv[]) {
+int main (int argc,char *argv[])
+{
     // 入力チェック
     if (argc != NUM_ARGUMENT) {
         printf("Wrong number of arguments (%d for %d).\n", argc, NUM_ARGUMENT);
@@ -1198,6 +1177,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "time") == 0) {
         printf("Calculate time\n");
         run_calc_time();
+    } else if (strcmp(argv[1], "eff") == 0) {
+        printf("Make IBO - Efficiency graph\n");
+        run_calc_amp_efficiency();
     } else if (strcmp(argv[1], "out") == 0) {
         run_calc_out_of_band_radiation();
     } else {
