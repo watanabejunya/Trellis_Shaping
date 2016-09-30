@@ -27,9 +27,14 @@ typedef _Complex double complex;
 #define NUM_SUBCARRIER 1024                                         // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // マッピングタイプ
+#define AMP_TYPE AMP_TYPE_IDEAL                                     // アンプの種類
+#define AMP_CLASS AMP_CLASS_A                                       // アンプの級数
+#define IS_EFFECTIVE 0                                              // effectiveフラグ
+#define IBO 4.0                                                     // IBO
 #endif
 
 #define CLIPPING_RATIO 1.3                                          // クリッピングの閾値
+#define SCALING_FACTOR 1.0                                          // スケーリング係数
 #define NUM_C (NUM_D + 1)                                           // cのビット数
 #define NUM_S (NUM_C - 2)                                           // sのビット数
 #define NUM_B 1                                                     // bのビット数
@@ -37,7 +42,6 @@ typedef _Complex double complex;
 #define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
 #define NUM_QAM_LSB ((int)pow(4.0, NUM_B))                          // MSBのコンステレーション数
 #define NUM_QAM_MSB (NUM_QAM / NUM_QAM_LSB)                         // LSBのコンステレーション数
-#define IBO 4.0                                                     //
 
 
 // マッピングを出力する
@@ -89,10 +93,10 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_real_imag(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // 変調
-    cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+    cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
     // オーバーサンプリング
     over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -106,11 +110,14 @@ void run_mapping () {
     // FFT
     fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-    // 減衰を補償する
-    offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
     // ダウンサンプリング
     down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+    //減衰を補償する
+    offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+    // 参照信号点をスケールする
+    scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
 
     // オーバーサンプリング
     over_sampling(a_caf, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -120,10 +127,10 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_real_imag(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // トレリスシェーピング
-    trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+    trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
     // オーバーサンプリング
     over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -133,7 +140,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_real_imag(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // メモリ解放
     free(d);
@@ -196,7 +203,7 @@ void run_calc_papr_ccdf () {
         multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
         // 変調
-        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -210,14 +217,17 @@ void run_calc_papr_ccdf () {
         // FFT
         fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
         // ダウンサンプリング
         down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+        //減衰を補償する
+        offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // 参照信号点をスケールする
+        scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
         // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -309,7 +319,7 @@ void run_calc_normalized_ccdf () {
         multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
         // 変調
-        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -323,14 +333,17 @@ void run_calc_normalized_ccdf () {
         // FFT
         fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
         // ダウンサンプリング
         down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+        //減衰を補償する
+        offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // 参照信号点をスケールする
+        scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
         // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -373,6 +386,109 @@ void run_calc_normalized_ccdf () {
 }
 
 
+// 平均電力を計算する
+void run_calc_average_power () {
+    int *d;                                     // 情報ビット
+    int *s, *z;                                 // 上位情報ビット
+    int *b;                                     // 下位情報ビット
+    int *c;                                     // 符号語
+    complex *a;                                 // OFDMシンボル
+    complex *a_caf;                             // CAF後のOFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    double average_power;                       // 平均電力
+    int i;                                      // ループカウンタ
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    d = (int *)malloc(NUM_D * NUM_SUBCARRIER * sizeof(int));
+    s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/average_power_%d-QAM_%d-subs_beta-%.2lf(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER, SCALING_FACTOR);
+
+    // 初期化
+    average_power = 0;
+
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
+
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+
+        // 符号化
+        inverse_parity_check_encoding(b, z, NUM_SUBCARRIER);
+
+        // 信号を合成
+        multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
+
+        // 変調
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // クリッピング
+        clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // FFT
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
+
+        // ダウンサンプリング
+        down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        //減衰を補償する
+        offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // 参照信号点をスケールする
+        scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
+        // トレリスシェーピング
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // 平均電力を求める
+        average_power += calc_average_power(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER) / (double)NUM_OFDM;
+
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
+    }
+
+    // ファイル出力
+    fprintf(fp, "%lf\n", average_power);
+
+    // メモリ解放
+    free(d);
+    free(s);
+    free(b);
+    free(c);
+    free(z);
+    free(a);
+    free(a_caf);
+    fftw_free(f);
+    fftw_free(t);
+}
+
+
 // クリッピング比対PAPRのグラフを作成
 void run_calc_clipping_ratio_characteristic () {
     int *d;                                     // 情報ビット
@@ -403,7 +519,7 @@ void run_calc_clipping_ratio_characteristic () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/clipping_ratio_chara_%d-QAM_%d-subs_beta-%.2lf(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER, SCALING_FACTOR);
 
     for (ratio = 0.1; ratio < 2.0; ratio += 0.1) {
 
@@ -424,7 +540,7 @@ void run_calc_clipping_ratio_characteristic () {
             multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
             // 変調
-            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -438,14 +554,17 @@ void run_calc_clipping_ratio_characteristic () {
             // FFT
             fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-            // 減衰を補償する
-            offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ratio);
-
             // ダウンサンプリング
             down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+            //減衰を補償する
+            offset_attenuation(a_caf, NUM_SUBCARRIER, ratio);
+
+            // 参照信号点をスケールする
+            scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
             // トレリスシェーピング
-            trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+            trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -551,7 +670,7 @@ void run_calc_slm_characteristic () {
                 multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
                 // 変調
-                cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+                cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
                 // オーバーサンプリング
                 over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -565,14 +684,17 @@ void run_calc_slm_characteristic () {
                 // FFT
                 fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-                // 減衰を補償する
-                offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
                 // ダウンサンプリング
                 down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+                //減衰を補償する
+                offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+                // 参照信号点をスケールする
+                scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
                 // トレリスシェーピング
-                trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+                trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
                 // オーバーサンプリング
                 over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -669,7 +791,7 @@ void run_calc_ber () {
 
     for (ebn0 = 6; ebn0 < 25; ebn0++) {
         // SNRを計算
-        snr = pow(10, ((double)ebn0 / 10.0)) * rate * log2(NUM_QAM);
+        snr = pow(10,(ebn0 / 10.0)) * rate * log2(NUM_QAM);
 
         // BERを初期化
         ber = 0;
@@ -688,7 +810,7 @@ void run_calc_ber () {
             multiplexer(s1, z1, c1, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
             // 変調
-            cbts_qam_modulation(c1, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+            cbts_qam_modulation(c1, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -702,14 +824,17 @@ void run_calc_ber () {
             // FFT
             fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-            // 減衰を補償する
-            offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
             // ダウンサンプリング
             down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+            //減衰を補償する
+            offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+            // 参照信号点をスケールする
+            scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
             // トレリスシェーピング
-            trellis_shaping_caf(c1, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+            trellis_shaping_caf(c1, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -733,7 +858,7 @@ void run_calc_ber () {
             down_sampling(f, a, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
             // 復調
-            qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+            ts_qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // 信号を分離
             demultiplexer(c2, s2, z2, NUM_C, NUM_S, NUM_Z, NUM_SUBCARRIER);
@@ -745,7 +870,7 @@ void run_calc_ber () {
             multiplexer(s2, b2, d2, NUM_S, NUM_B, NUM_D, NUM_SUBCARRIER);
 
             // BERを計算
-            ber += count_be(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
+            ber += count_bit_error(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
 
             // 進捗を出力
             fprintf(stderr, "Eb/N0 = %.0d, trial = %d, BER = %e   \r", ebn0, i+1, ber / (double)(i+1));
@@ -815,7 +940,7 @@ void run_calc_time () {
         start_time = clock();
 
         // 変調
-        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -829,14 +954,17 @@ void run_calc_time () {
         // FFT
         fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
         // ダウンサンプリング
         down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+        //減衰を補償する
+        offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // 参照信号点をスケールする
+        scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
         // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
         // 計測終了
         end_time = clock();
@@ -866,7 +994,7 @@ void run_calc_time () {
 }
 
 
-void run_calc_amp_efficiency()
+void run_calc_pa_efficiency()
 {
     int *d;                                     // 情報ビット
     int *s, *z;                                 // 上位情報ビット
@@ -878,7 +1006,8 @@ void run_calc_amp_efficiency()
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
     complex *t_amp;                             // 増幅後の信号
-    double ibo;                                 // IBOとOBO
+    double ibo;                                 // IBO
+    double sdr;                                 // SDR
     double efficiency;                          // 増幅器効率
     int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
@@ -901,11 +1030,12 @@ void run_calc_amp_efficiency()
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs_amp_type-%d_class-%d(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER, AMP_TYPE, AMP_CLASS);
 
-    for (ibo = -4.0; ibo <= 8.0; ibo += 0.5) {
+    for (ibo = -15.0; ibo <= 15.0; ibo++) {
         // 初期化
         efficiency = 0;
+        sdr = 0;
 
         for (i = 0; i < NUM_OFDM; i++) {
             // 信号を生成
@@ -921,7 +1051,7 @@ void run_calc_amp_efficiency()
             multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
             // 変調
-            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -935,14 +1065,17 @@ void run_calc_amp_efficiency()
             // FFT
             fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-            // 減衰を補償する
-            offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
             // ダウンサンプリング
             down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+            //減衰を補償する
+            offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+            // 参照信号点をスケールする
+            scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
             // トレリスシェーピング
-            trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+            trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -951,17 +1084,20 @@ void run_calc_amp_efficiency()
             ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
             // 増幅器に通す
-            solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
+            amplify_signal(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, AMP_TYPE);
+
+            // SDRを計算
+            sdr += calc_sdr_design(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
             // 増幅器効率を計算
-            efficiency += calc_amplifier_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, "a");
+            efficiency += calc_pa_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, AMP_CLASS);
 
             // 進捗を出力
-            fprintf(stderr, "ibo = %.1lf [dB] trial = %d efficiency = %lf  \r", ibo, i+1, efficiency / (double)(i+1) * 100.0);
+            fprintf(stderr, "ibo = %.1lf [dB] trial = %d sdr = %lf [dB] efficiency = %lf [%%] \r", ibo, i+1, sdr / (double)(i+1), efficiency / (double)(i+1) * 100.0);
         }
 
         // ファイル出力
-        fprintf(fp, "%.1lf %lf\n", ibo, efficiency / (double)NUM_OFDM * 100.0);
+        fprintf(fp, "%lf %lf\n", sdr / (double)NUM_OFDM, efficiency / (double)NUM_OFDM * 100.0);
 
         // 改行
         printf("\n");
@@ -979,9 +1115,11 @@ void run_calc_amp_efficiency()
     free(a_caf);
     fftw_free(f);
     fftw_free(t);
+    free(t_amp);
 }
 
 
+// PSDを求める
 void run_calc_out_of_band_radiation()
 {
     int *d;                                     // 情報ビット
@@ -994,7 +1132,6 @@ void run_calc_out_of_band_radiation()
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
     complex *t_amp;                             // 増幅後の信号
-    double ibo = IBO;                           // IBO
     double *psd;                                // 電力密度スペクトル
     int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
@@ -1018,7 +1155,7 @@ void run_calc_out_of_band_radiation()
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/out_of_band_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/out_of_band_%d-QAM_%d-subs_amp_type-%d(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER, AMP_TYPE);
 
     for (i = 0; i < NUM_OFDM; i++) {
         // 信号を生成
@@ -1034,7 +1171,7 @@ void run_calc_out_of_band_radiation()
         multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
         // 変調
-        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -1048,14 +1185,17 @@ void run_calc_out_of_band_radiation()
         // FFT
         fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
 
-        // 減衰を補償する
-        offset_attenuation(f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
         // ダウンサンプリング
         down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
+        //減衰を補償する
+        offset_attenuation(a_caf, NUM_SUBCARRIER, CLIPPING_RATIO);
+
+        // 参照信号点をスケールする
+        scale_complex(a_caf, NUM_SUBCARRIER, SCALING_FACTOR);
+
         // トレリスシェーピング
-        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
+        trellis_shaping_caf(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -1064,88 +1204,37 @@ void run_calc_out_of_band_radiation()
         ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
         // 増幅器に通す
-        solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
+        amplify_signal(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, IBO, AMP_TYPE);
 
         // FFT
         fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t_amp, f);
 
-        // 平均を求める
+        // PSDを算出する
         calc_power_spectral_density(f, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, NUM_OFDM);
 
-    print_map(fp, f, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
-    exit(-1);
         // 進捗を出力
         fprintf(stderr, "trial = %d  \r", i+1);
     }
+
     // 出力
-    print_power(fp, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_double(fp, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+
+    // メモリ解放
+    free(d);
+    free(s);
+    free(z);
+    free(b);
+    free(x);
+    free(y);
+    free(c);
+    free(a);
+    free(a_caf);
+    fftw_free(f);
+    fftw_free(t);
+    free(t_amp);
+    free(psd);
 }
 
-
-void test ()
-{
-    int *c;                                     // 符号語
-    complex *a;                                 // OFDMシンボル
-    complex *a_caf;                             // CAF後のOFDMシンボル
-    complex *h;                                 // CAFの非線形歪み
-    fftw_complex *f;                            // FFT用(周波数領域)
-    fftw_complex *t;                            // FFT用(時間領域)
-    double *amp_pmf, *phase_pmf;                // 振幅と位相のPMF
-    FILE *fp1, *fp2;                            // 出力用ファイルポインタ
-
-    // メモリの確保
-    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
-    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    h = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
-    amp_pmf = (double *)malloc(100 * sizeof(double));
-    phase_pmf = (double *)malloc(100 * sizeof(double));
-
-    // 乱数の初期化
-    srandom((unsigned)time(NULL));
-
-    // 出力ファイルを開く
-    fp1 = fsopen("w", "./Result/amp_pmf_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
-    fp2 = fsopen("w", "./Result/phase_pmf_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
-
-    // 信号を生成
-    make_signal(c, NUM_C * NUM_SUBCARRIER);
-
-    // 変調
-    cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, 1);
-
-    // オーバーサンプリング
-    over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-    // IFFT
-    ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
-
-    // クリッピング
-    clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
-
-    // FFT
-    fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t, f);
-
-    // ダウンサンプリング
-    down_sampling(f, a_caf, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
-
-    // 減衰を補償する
-    offset_attenuation(a, NUM_SUBCARRIER, 1.0 / CLIPPING_RATIO);
-
-    // H_kを計算する
-    for (int i = 0; i < NUM_SUBCARRIER; i++) {
-        h[i] = a_caf[i] - a[i];
-    }
-
-    calc_amp_phase_pmf(h, amp_pmf, phase_pmf, NUM_SUBCARRIER, 100);
-
-    for (int i = 0; i < 100; i++) {
-        fprintf(fp1, "%d %lf\n", i, amp_pmf[i]);
-        fprintf(fp2, "%d %lf\n", i, phase_pmf[i]);
-    }
-}
 
 int main (int argc,char *argv[])
 {
@@ -1165,6 +1254,9 @@ int main (int argc,char *argv[])
     } else if (strcmp(argv[1], "normal") == 0) {
         printf("Make normalized power - CCDF graph.\n");
         run_calc_normalized_ccdf();
+    } else if (strcmp(argv[1], "power") == 0) {
+        printf("Calculate average power.\n");
+        run_calc_average_power();
     } else if (strcmp(argv[1], "ratio") == 0) {
         printf("Make clipping ratio - PAPR graph.\n");
         run_calc_clipping_ratio_characteristic();
@@ -1178,9 +1270,10 @@ int main (int argc,char *argv[])
         printf("Calculate time\n");
         run_calc_time();
     } else if (strcmp(argv[1], "eff") == 0) {
-        printf("Make IBO - Efficiency graph\n");
-        run_calc_amp_efficiency();
+        printf("Make IBO - efficiency graph.\n");
+        run_calc_pa_efficiency();
     } else if (strcmp(argv[1], "out") == 0) {
+        printf("Make PSD graph.\n");
         run_calc_out_of_band_radiation();
     } else {
         printf("Invalid argument\n");

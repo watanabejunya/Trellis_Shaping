@@ -21,24 +21,22 @@ FILE *fsopen(const char *mode, const char *format, ...);
 void make_signal(int *x, int n);
 void joint_signal(complex *x, complex *y, int n, int m);
 void gaussian_noise(complex *x, double sigma, int n);
-int count_be(int *x, int *y, int n);
-void print_map(FILE *fp, fftw_complex *x, int n);
-void print_power(FILE *fp, double *x, int n);
+int count_bit_error(int *x, int *y, int n);
+void print_int(FILE *fp, int *x, int n);
+void print_double(FILE *fp, double *x, int n);
+void print_two_doubles(FILE *fp, double *x, double *y, int n);
+void print_real_imag(FILE *fp, complex *x, int n);
+void print_power(FILE *fp, complex *x, int n);
+void print_absolute(FILE *fp, complex *x, int n);
 void copy_int(int *x, int *x_copy, int n);
+void copy_double(double *x, double *x_copy, int n);
 void copy_complex(complex *x, complex *x_copy, int n);
+void scale_complex(complex *x, int n, double scale);
 void xor_addition(int *x, int *y, int n);
 int convert_binary_into_decimal(int *b, int n);
 void convert_decimal_into_binary(int d, int *b, int n);
 int check_power_of_2(int n);
-void make_signal(int *x, int n);
-void joint_signal(complex *x, complex *y, int n, int m);
-void gaussian_noise(complex *x, double sigma, int n);
-int count_be(int *x, int *y, int n);
-void print_map(FILE *fp, fftw_complex *x, int n);
-void print_power(FILE *fp, double *x, int n);
-void copy_int(int *x, int *x_copy, int n);
-void copy_complex(complex *x, complex *x_copy, int n);
-void xor_addition(int *x, int *y, int n);
+int check_power_of_4(int n);
 void convolutional_encoding(int *u, int *c, int n);
 void parity_check_decoding(int *c, int *u, int n);
 void inverse_parity_check_encoding(int *u, int *c, int n);
@@ -58,7 +56,7 @@ void unmap_256qam_type1(complex a, int *bits);
 void unmap_256qam_type2(complex a, int *bits);
 void construct_constellation(complex *constellation, int m, int type);
 void qam_modulation(int *c, complex *a, int n, int m);
-void qam_demodulation(complex *a, int *c, int n, int m, int type);
+void qam_demodulation(complex *a, int *c, int n, int m);
 void fft(int n, fftw_complex *in, fftw_complex *out);
 void ifft(int n, fftw_complex *in, fftw_complex *out);
 void over_sampling(complex *x, fftw_complex *y, int j, int n);
@@ -66,11 +64,6 @@ void down_sampling(fftw_complex *x, complex *y, int j, int n);
 double calc_average_power(complex *a, int n);
 double calc_average_amplitude(complex *a, int n);
 void calc_amp_phase_pmf(complex *x, double *amp_pmf, double *phase_pmf, int n, int m);
-
-
-/**
- * 関数記述
- */
 
 
 // ファイルオープン
@@ -117,7 +110,7 @@ void gaussian_noise(complex *x, double sigma, int n) {
         u1 = ((double)random() + 1.0) / ((double)RAND_MAX + 1.0);
         u2 = ((double)random() + 1.0) / ((double)RAND_MAX + 1.0);
 
-        v = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2) + i * sqrt(-2.0 * log(u1)) * sin(2.0 * M_PI * u2);
+        v = sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2) + I * sqrt(-2.0 * log(u1)) * sin(2.0 * M_PI * u2);
 
         x[i] += v * sigma;
     }
@@ -125,8 +118,9 @@ void gaussian_noise(complex *x, double sigma, int n) {
 
 
 // ビットエラーを数える
-int count_be(int *x, int *y, int n) {
-    int count= 0;
+int count_bit_error(int *x, int *y, int n)
+{
+    int count = 0;
 
     for (int i = 0; i < n; i++) {
         if (x[i] != y[i]) {
@@ -138,8 +132,39 @@ int count_be(int *x, int *y, int n) {
 }
 
 
+void print_int(FILE *fp, int *x, int n)
+{
+    if (fp != NULL) {
+        for (int i = 0; i < n; i++) {
+            fprintf(fp, "%d %d\n", i, x[i]);
+        }
+    }
+}
+
+
+void print_double(FILE *fp, double *x, int n)
+{
+    if (fp != NULL) {
+        for (int i = 0; i < n; i++) {
+            fprintf(fp, "%d %lf\n", i, x[i]);
+        }
+    }
+}
+
+
+void print_two_doubles(FILE *fp, double *x, double *y, int n)
+{
+    if (fp != NULL) {
+        for (int i = 0; i < n; i++) {
+            fprintf(fp, "%lf %lf\n", x[i], y[i]);
+        }
+    }
+}
+
+
 // マッピング出力
-void print_map(FILE *fp, complex *x, int n) {
+void print_real_imag(FILE *fp, complex *x, int n)
+{
     if (fp != NULL) {
         for (int i = 0; i < n; i++) {
             fprintf(fp, "%lf %lf\n", creal(x[i]), cimag(x[i]));
@@ -148,11 +173,23 @@ void print_map(FILE *fp, complex *x, int n) {
 }
 
 
-void print_power(FILE *fp, double *x, int n)
+// マッピング出力
+void print_power(FILE *fp, complex *x, int n)
 {
     if (fp != NULL) {
         for (int i = 0; i < n; i++) {
-            fprintf(fp, "%d %lf\n", i, x[i]);
+            fprintf(fp, "%d %lf\n", i, pow(cabs(x[i]), 2.0));
+        }
+    }
+}
+
+
+// マッピング出力
+void print_absolute(FILE *fp, complex *x, int n)
+{
+    if (fp != NULL) {
+        for (int i = 0; i < n; i++) {
+            fprintf(fp, "%d %lf\n", i, cabs(x[i]));
         }
     }
 }
@@ -167,12 +204,33 @@ void copy_int (int *x, int *x_copy, int n) {
     }
 }
 
+
+// 少数をコピー
+void copy_double (double *x, double *x_copy, int n) {
+    int i;          // ループカウンタ
+
+    for (i = 0; i < n; i++) {
+        x_copy[i] = x[i];
+    }
+}
+
+
 // 複素数をコピー
 void copy_complex (complex *x, complex *x_copy, int n) {
     int i;          // ループカウンタ
 
     for (i = 0; i < n; i++) {
         x_copy[i] = x[i];
+    }
+}
+
+
+void scale_complex(complex *x, int n, double scale)
+{
+    int i;          // ループカウンタ
+
+    for (i = 0; i < n; i++) {
+        x[i] *= scale;
     }
 }
 
@@ -579,7 +637,8 @@ void unmap_256qam_type2 (complex a, int *bits) {
 
 
 // トレリスシェイピングの変調
-void qam_modulation (int *c, complex *a, int n, int m) {
+void qam_modulation (int *c, complex *a, int n, int m)
+{
     // コンステレーション数のチェック
     if (check_power_of_4(m) == 0 || m > 256) {
         printf("invalid number of constellation.\n");
@@ -601,53 +660,25 @@ void qam_modulation (int *c, complex *a, int n, int m) {
 
 
 // QAM復調
-void qam_demodulation(complex *a, int *c, int n, int m, int type)
+void qam_demodulation(complex *a, int *c, int n, int m)
 {
     const int num_bit = (int)log2(m);             // ビット数
-    static int *bits;                                   // ビット列
-    static int memory_flag;                             // メモリ管理フラグ
-    int i;                                              // ループカウンタ
+    int i;                                        // ループカウンタ
 
-    if (memory_flag == 0) {
-        // コンステレーション数のチェック
-        if (m != 16 && m != 64 && m != 256) {
-            printf("invalid number of constellation.\n");
-            exit(-1);
-        }
-
-        // タイプのチェック
-        if (type != 1 && type != 2) {
-            printf("invalid argument for type (type = 1 or 2).\n");
-            exit(-1);
-        }
-
-        // ビット列を生成する
-        bits = (int *)malloc(num_bit * sizeof(int));
-
-        // フラグを立てる
-        memory_flag = 1;
+    // コンステレーション数のチェック
+    if (m != 16 && m != 64 && m != 256) {
+        printf("invalid number of constellation.\n");
+        exit(-1);
     }
 
     // 復調
     for (i = 0; i < n; i++) {
         if (m == 16) {
-            if (type == 1) {
-                unmap_16qam_type1(a[i], c + i * num_bit);
-            } else {
-                unmap_16qam_type2(a[i], c + i * num_bit);
-            }
+            unmap_16qam_type1(a[i], c + i * num_bit);
         } else if (m == 64) {
-            if (type == 1) {
-                unmap_64qam_type1(a[i], c + i * num_bit);
-            } else {
-                unmap_64qam_type2(a[i], c + i * num_bit);
-            }
+            unmap_64qam_type1(a[i], c + i * num_bit);
         } else if (m == 256) {
-            if (type == 1) {
-                unmap_256qam_type1(a[i], c + i * num_bit);
-            } else {
-                unmap_256qam_type2(a[i], c + i * num_bit);
-            }
+            unmap_256qam_type1(a[i], c + i * num_bit);
         }
     }
 }

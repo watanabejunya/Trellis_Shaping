@@ -22,9 +22,12 @@ typedef _Complex double complex;
 #define NUM_ARGUMENT 2                                              // 引数の数
 #define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
 #define NUM_D 3                                                     // QAMのコンステレーション数
-#define NUM_SUBCARRIER 1024                                           // サブキャリア数
+#define NUM_SUBCARRIER 1024                                         // サブキャリア数
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
+#define AMP_TYPE AMP_TYPE_IDEAL                                     // アンプの種類
+#define AMP_CLASS AMP_CLASS_A                                       // アンプの級数
+#define IS_EFFECTIVE 0                                              // effectiveフラグ
 #endif
 
 #define NUM_C (NUM_D + 1)                                           // cのビット数
@@ -33,8 +36,6 @@ typedef _Complex double complex;
 #define NUM_B (NUM_C - 2)                                           // bのビット数
 #define NUM_Z 2                                                     // zのビット数
 
-int count_add = 0;
-int count_mul = 0;
 
 // マッピングを出力する
 void run_mapping () {
@@ -83,7 +84,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs_Type-%d(TS).dat", NUM_QAM, NUM_SUBCARRIER, MAPPING_TYPE);
-    print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_real_imag(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // トレリスシェーピング
     trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
@@ -96,7 +97,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs_Type-%d(TS).dat", NUM_QAM, NUM_SUBCARRIER, MAPPING_TYPE);
-    print_map(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+    print_real_imag(fp, t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
     // メモリ解放
     free(d);
@@ -288,6 +289,82 @@ void run_calc_normalized_ccdf () {
 }
 
 
+// 平均電力を計算する
+void run_calc_average_power () {
+    int *d;                                     // 情報ビット
+    int *s, *z;                                 // 上位情報ビット
+    int *b;                                     // 下位情報ビット
+    int *c;                                     // 符号語
+    complex *a;                                 // OFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    double average_power;                       // 平均電力
+    int i;                                      // ループカウンタ
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    d = (int *)malloc(NUM_D * NUM_SUBCARRIER * sizeof(int));
+    s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/average_power_%d-QAM_%d-subs_Type-%d(TS).dat", NUM_QAM, NUM_SUBCARRIER, MAPPING_TYPE);
+
+    // 初期化
+    average_power = 0;
+
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
+
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+
+        // 符号化
+        inverse_parity_check_encoding(s, z, NUM_SUBCARRIER);
+
+        // 信号を合成
+        multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
+
+        // トレリスシェーピング
+        trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // 平均電力を求める
+        average_power += calc_average_power(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER) / (double)NUM_OFDM;
+
+        // 進捗を出力
+        fprintf(stderr, "trial = %d   \r", i+1);
+    }
+
+    // ファイル出力
+    fprintf(fp, "%lf\n", average_power);
+
+    // メモリ解放
+    free(d);
+    free(s);
+    free(b);
+    free(c);
+    free(z);
+    free(a);
+    fftw_free(f);
+    fftw_free(t);
+}
+
+
 // 平均PAPRを計算
 void run_calc_mean_papr () {
     int *d;                                     // 情報ビット
@@ -458,7 +535,7 @@ void run_calc_ber () {
             down_sampling(f, a, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
             // 復調
-            qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+            ts_qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // 信号を分離
             demultiplexer(c2, z2, b2, NUM_C, NUM_Z, NUM_B, NUM_SUBCARRIER);
@@ -470,7 +547,7 @@ void run_calc_ber () {
             multiplexer(s2, b2, d2, NUM_S, NUM_B, NUM_D, NUM_SUBCARRIER);
 
             // BERを計算
-            ber += count_be(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
+            ber += count_bit_error(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
 
             // 進捗を出力
             fprintf(stderr, "Eb/N0 = %d, trial = %d, BER = %e   \r", ebn0, i+1, ber / (double)(i+1));
@@ -569,19 +646,19 @@ void run_calc_time () {
 }
 
 
-void run_calc_amp_efficiency()
+// 増幅器効率を計算する
+void run_calc_pa_efficiency()
 {
     int *d;                                     // 情報ビット
     int *s, *z;                                 // 上位情報ビット
     int *b;                                     // 下位情報ビット
     int *c;                                     // 符号語
-    int *x, *y;                                 // インタリーバ
     complex *a;                                 // OFDMシンボル
-    complex *a_caf;                             // CAF後のOFDMシンボル
     fftw_complex *f;                            // FFT用(周波数領域)
     fftw_complex *t;                            // FFT用(時間領域)
     complex *t_amp;                             // 増幅後の信号
-    double ibo;                                 // IBOとOBO
+    double ibo;                                 // IBO
+    double sdr;                                 // SDR
     double efficiency;                          // 増幅器効率
     int i;                                      // ループカウンタ
     FILE *fp;                                   // 出力用ファイルポインタ
@@ -591,11 +668,8 @@ void run_calc_amp_efficiency()
     s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
     b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
     z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
-    x = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
-    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
     c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
     a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
-    a_caf = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
     f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
     t_amp = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
@@ -604,11 +678,12 @@ void run_calc_amp_efficiency()
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/pa_efficiency_%d-QAM_%d-subs_amp_type-%d_class-%d(TS).dat", NUM_QAM, NUM_SUBCARRIER, AMP_TYPE, AMP_CLASS);
 
-    for (ibo = -4.0; ibo <= 8.0; ibo += 0.5) {
+    for (ibo = -15.0; ibo <= 15.0; ibo++) {
         // 初期化
         efficiency = 0;
+        sdr = 0;
 
         for (i = 0; i < NUM_OFDM; i++) {
             // 信号を生成
@@ -633,17 +708,20 @@ void run_calc_amp_efficiency()
             ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
 
             // 増幅器に通す
-            solid_state_power_amplifier(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo);
+            amplify_signal(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, AMP_TYPE);
+
+            // SDRを計算
+            sdr += calc_sdr_design(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
 
             // 増幅器効率を計算
-            efficiency += calc_amplifier_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, "a");
+            efficiency += calc_pa_efficiency(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, ibo, AMP_CLASS);
 
             // 進捗を出力
-            fprintf(stderr, "ibo = %.1lf [dB] trial = %d efficiency = %lf  \r", ibo, i+1, efficiency / (double)(i+1) * 100.0);
+            fprintf(stderr, "ibo = %.1lf [dB] trial = %d sdr = %lf efficiency = %lf  \r", ibo, i+1, sdr / (double)(i+1), efficiency / (double)(i+1) * 100.0);
         }
 
         // ファイル出力
-        fprintf(fp, "%.1lf %lf\n", ibo, efficiency / (double)NUM_OFDM * 100.0);
+        fprintf(fp, "%lf %lf\n", sdr / (double)NUM_OFDM, efficiency / (double)NUM_OFDM * 100.0);
 
         // 改行
         printf("\n");
@@ -654,11 +732,171 @@ void run_calc_amp_efficiency()
     free(s);
     free(z);
     free(b);
-    free(x);
-    free(y);
     free(c);
     free(a);
-    free(a_caf);
+    fftw_free(f);
+    fftw_free(t);
+    free(t_amp);
+}
+
+
+// 帯域外輻射を計算する
+void run_calc_out_of_band_radiation()
+{
+    int *d;                                     // 情報ビット
+    int *s, *z;                                 // 上位情報ビット
+    int *b;                                     // 下位情報ビット
+    int *c;                                     // 符号語
+    complex *a;                                 // OFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    complex *t_amp;                             // 増幅後の信号
+    double *psd;                                // 電力密度スペクトル
+    int i;                                      // ループカウンタ
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    d = (int *)malloc(NUM_D * NUM_SUBCARRIER * sizeof(int));
+    s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t_amp = (complex *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(complex));
+    psd = (double *)malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(double));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/out_of_band_%d-QAM_%d-subs_amp_type-%d(TS).dat", NUM_QAM, NUM_SUBCARRIER, AMP_TYPE);
+
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
+
+        // 信号を分離
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+
+        // 符号化
+        inverse_parity_check_encoding(s, z, NUM_SUBCARRIER);
+
+        // 信号を合成
+        multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
+
+        // トレリスシェーピング
+        trellis_shaping(c, a, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // 増幅器に通す
+        amplify_signal(t, t_amp, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, IBO, AMP_TYPE);
+
+        // FFT
+        fft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, t_amp, f);
+
+        // PSDを算出する
+        calc_power_spectral_density(f, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, NUM_OFDM);
+
+        // 進捗を出力
+        fprintf(stderr, "trial = %d  \r", i+1);
+    }
+
+    // 出力
+    print_double(fp, psd, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+
+    // メモリ解放
+    free(d);
+    free(s);
+    free(z);
+    free(b);
+    free(c);
+    free(a);
+    fftw_free(f);
+    fftw_free(t);
+    free(t_amp);
+    free(psd);
+}
+
+
+// 帯域外輻射を計算する
+void run_test()
+{
+    int *d;                                     // 情報ビット
+    int *s, *z;                                 // 上位情報ビット
+    int *b;                                     // 下位情報ビット
+    int *c;                                     // 符号語
+    int *x, *y;                                 // 制御ビット
+    complex *a;                                 // OFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    double acl, papr;                                 // PAPR
+    FILE *fp;
+    int i, j;                                      // ループカウンタ
+
+    // メモリの確保
+    d = (int *)malloc(NUM_D * NUM_SUBCARRIER * sizeof(int));
+    s = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    b = (int *)malloc(NUM_B * NUM_SUBCARRIER * sizeof(int));
+    z = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    x = (int *)malloc(NUM_S * NUM_SUBCARRIER * sizeof(int));
+    y = (int *)malloc(NUM_Z * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    fp = fsopen("w", "./Result/test.dat");
+
+    srandom((unsigned)time(NULL));
+
+    for (i = 0; i < 1000; i++) {
+        make_signal(d, NUM_D * NUM_SUBCARRIER);
+
+        demultiplexer(d, s, b, NUM_D, NUM_S, NUM_B, NUM_SUBCARRIER);
+
+        inverse_parity_check_encoding(s, z, NUM_SUBCARRIER);
+
+        multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
+
+        for (j = 0; j < 100; j++) {
+            make_signal(x, NUM_S * NUM_SUBCARRIER);
+
+            inverse_parity_check_encoding(x, y, NUM_SUBCARRIER);
+
+            xor_addition(z, y, NUM_Z * NUM_SUBCARRIER);
+
+            multiplexer(z, b, c, NUM_Z, NUM_B, NUM_C, NUM_SUBCARRIER);
+
+            qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM);
+
+            acl = sum_square_autocor(a, NUM_SUBCARRIER);
+
+            over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+            ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+            papr = calc_papr_db(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+
+            fprintf(fp, "%lf %lf\n", acl, papr);
+
+            fprintf(stderr, "trial = %d-%d \r", i, j);
+        }
+    }
+
+    // メモリ解放
+    free(d);
+    free(s);
+    free(z);
+    free(b);
+    free(c);
+    free(a);
     fftw_free(f);
     fftw_free(t);
 }
@@ -681,6 +919,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "normal") == 0) {
         printf("Make normalized power - CCDF graph.\n");
         run_calc_normalized_ccdf();
+    } else if (strcmp(argv[1], "power") == 0) {
+        printf("Calculate mean average power.\n");
+        run_calc_average_power();
     } else if (strcmp(argv[1], "papr") == 0) {
         printf("Calculate mean PAPR.\n");
         run_calc_mean_papr();
@@ -691,8 +932,14 @@ int main (int argc,char *argv[]) {
         printf("Calculate time.\n");
         run_calc_time();
     } else if (strcmp(argv[1], "eff") == 0) {
-        printf("Calculate cost.\n");
-        run_calc_amp_efficiency();
+        printf("Make IBO - efficiency graph.\n");
+        run_calc_pa_efficiency();
+    } else if (strcmp(argv[1], "out") == 0) {
+        printf("Make PSD graph.\n");
+        run_calc_out_of_band_radiation();
+    } else if (strcmp(argv[1], "test") == 0) {
+        printf("Run test.\n");
+        run_test();
     } else {
         printf("Invalid argument\n");
         exit(-1);

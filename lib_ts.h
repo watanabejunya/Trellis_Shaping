@@ -33,8 +33,11 @@ void parity_check_decoding3(int *c, int *u, int n);
 void inverse_parity_check_encoding2(int *u, int *c, int n);
 void inverse_parity_check_encoding3(int *u, int *c, int n);
 void construct_constellation(complex *constellation, int m, int type);
+void cbts_qam_modulation(int *c, complex *a, int n, int m_m, int m_l, int type);
+void ts_qam_modulation(int *c, complex *a, int n, int m, int type);
+void ts_qam_demodulation(complex *a, int *c, int n, int m, int type);
 void trellis_shaping(int *c, complex *a, int n, int num_qam, int type);
-void trellis_shaping_caf(int *c, complex *a_caf, complex *a, int n, int m);
+void trellis_shaping_caf(int *c, complex *a_caf, complex *a, int n, int m, int type);
 void trellis_shaping_caf2(int *c, complex *a_caf, complex *a, int n, int m);
 void trellis_shaping_caf3(int *c, complex *a_caf, complex *a, int n, int m);
 
@@ -63,7 +66,7 @@ void demultiplexer (int *d, int *s, int *b, int num_d, int num_s, int num_b, int
 //マルチプレクサ(num_s + num_b → num_d)
 void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n) {
     if (num_d != num_s + num_b) {
-        fprintf(stderr, "%d bits cannot be demultiplexed to %d and %d bits.\n", num_d, num_s, num_b);
+        fprintf(stderr, "%d and %d bits cannot be multiplexed to %d bits.\n", num_s, num_b, num_d);
         exit(-1);
     }
 
@@ -413,8 +416,51 @@ void ts_qam_modulation(int *c, complex *a, int n, int m, int type)
 }
 
 
+void ts_qam_demodulation(complex *a, int *c, int n, int m, int type)
+{
+    const int num_bit = (int)log2(m);             // ビット数
+    int i;                                        // ループカウンタ
+
+    // コンステレーション数のチェック
+    if (m != 16 && m != 64 && m != 256) {
+        printf("invalid number of constellation.\n");
+        exit(-1);
+    }
+
+    // タイプのチェック
+    if (type != 1 && type != 2) {
+        printf("invalid argument for type (type = 1 or 2).\n");
+        exit(-1);
+    }
+
+    // 復調
+    for (i = 0; i < n; i++) {
+        if (m == 16) {
+            if (type == 1) {
+                unmap_16qam_type1(a[i], c + i * num_bit);
+            } else {
+                unmap_16qam_type2(a[i], c + i * num_bit);
+            }
+        } else if (m == 64) {
+            if (type == 1) {
+                unmap_64qam_type1(a[i], c + i * num_bit);
+            } else {
+                unmap_64qam_type2(a[i], c + i * num_bit);
+            }
+        } else if (m == 256) {
+            if (type == 1) {
+                unmap_256qam_type1(a[i], c + i * num_bit);
+            } else {
+                unmap_256qam_type2(a[i], c + i * num_bit);
+            }
+        }
+    }
+}
+
+
 // トレリスシェーピング
-void trellis_shaping (int *c, complex *a, int n, int m, int type) {
+void trellis_shaping (int *c, complex *a, int n, int m, int type)
+{
     const int num_state = 4;                                                            // 状態数
     const int num_trans = 2;                                                            // 遷移数
     const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
@@ -436,6 +482,11 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type) {
         // コンステレーション数のチェック
         if (check_power_of_4(m) == 0 || m > 256) {
             printf("invalid number of constellation.\n");
+            exit(-1);
+        }
+        // マッピングタイプのチェック
+        if (type != 1 && type != 2) {
+            printf("invalid argument for type (type = 1 or 2).\n");
             exit(-1);
         }
 
@@ -559,7 +610,7 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type) {
 
 
 // トレリスシェーピング
-void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
+void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m, int type) {
     const int num_state = 4;                                                            // 状態数
     const int num_trans = 2;                                                            // 遷移数
     const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
@@ -581,6 +632,11 @@ void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
             printf("invalid number of constellation.\n");
             exit(-1);
         }
+        // マッピングタイプのチェック
+        if (type != 1 && type != 2) {
+            printf("invalid argument for type (type = 1 or 2).\n");
+            exit(-1);
+        }
 
         // メモリの確保
         constellation = (complex *)malloc(m * sizeof(complex));
@@ -594,7 +650,7 @@ void trellis_shaping_caf (int *c, complex *a_caf, complex *a, int n, int m) {
         }
 
         // 信号点配置を初期化
-        construct_constellation(constellation, m, 1);
+        construct_constellation(constellation, m, type);
 
         // フラグをチェック
         memory_flag = 1;
@@ -774,7 +830,7 @@ void trellis_shaping_caf2 (int *c, complex *a_caf, complex *a, int n, int m) {
         a[i] = constellation[nodes[n][likely_state].a_index[i]];
     }
 
-    qam_demodulation(a, c, n, m, 1);
+    ts_qam_demodulation(a, c, n, m, 1);
 
     // 初期化
     for (i = 0; i <= n; i++) {
@@ -948,7 +1004,7 @@ void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
         a[i] = constellation[nodes[n][likely_state].a_index[i]];
     }
 
-    qam_demodulation(a, c, n, m, 1);
+    ts_qam_demodulation(a, c, n, m, 1);
 
     // 初期化
     for (i = 0; i <= n; i++) {
@@ -1012,7 +1068,7 @@ void trellis_shaping_caf3 (int *c, complex *a_caf, complex *a, int n, int m) {
         a[i] = constellation[nodes[n][likely_state].a_index[i]];
     }
 
-    qam_demodulation(a, c, n, m, 1);
+    ts_qam_demodulation(a, c, n, m, 1);
 
     // 初期化
     for (i = 0; i <= n; i++) {

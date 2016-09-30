@@ -6,8 +6,8 @@
 # allow bellow
 !.gitignore
 !*.c
+!*.cpp
 !*.h
-!*.sh
 !/Figures/
 
 # ignore env.h

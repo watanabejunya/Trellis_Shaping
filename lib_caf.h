@@ -16,11 +16,13 @@ typedef _Complex double complex;
 
 
 void clipping(complex *x, int n, double r);
+double calc_attenuation(double r);
 void offset_attenuation(complex *x, int n, double r);
 
 
 // クリッピング
-void clipping (complex *x, int n, double r) {
+void clipping (complex *x, int n, double r)
+{
     int i;                      // ループカウンタ
     double e = 0;               // 平均値
     double r_max;               // 振幅の最大値
@@ -42,10 +44,16 @@ void clipping (complex *x, int n, double r) {
 }
 
 
+double calc_attenuation(double r)
+{
+    return 1.0 - exp(- pow(r, 2.0)) + sqrt(M_PI) * r * erfc(r) / 2.0;
+}
+
 // 減衰を補償する
-void offset_attenuation (complex *x, int n, double r) {
-    const double alpha = 1.0 - exp(-pow(r, 2.0)) + sqrt(M_PI)*r*erfc(r)/2.0;        // 減衰係数
-    int i;                                                                          // ループカウンタ
+void offset_attenuation (complex *x, int n, double r)
+{
+    const double alpha = 1.0 - exp(- pow(r, 2.0)) + sqrt(M_PI) * r * erfc(r) / 2.0;     // 減衰係数
+    int i;                                                                              // ループカウンタ
 
     for (i = 0; i < n; i++) {
         x[i] /= alpha;

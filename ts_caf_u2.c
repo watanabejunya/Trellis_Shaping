@@ -5,13 +5,19 @@
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
+#include "env.h"
+#include "lib_base.h"
 #include "lib_ts.h"
+#include "lib_caf.h"
+#include "lib_peak.h"
+#include "lib_amp.h"
 
 #ifndef TYPE_COMPLEX
 #define TYPE_COMPLEX
 #undef complex
 typedef _Complex double complex;
 #endif
+
 
 #ifndef ENV_H
 #define NUM_ARGUMENT 2                                              // 引数の数
@@ -21,16 +27,22 @@ typedef _Complex double complex;
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define CLIPPING_RATIO 0.1                                          // クリッピングの閾値
 #define MAPPING_TYPE 1                                              // マッピングタイプ
+#define AMP_TYPE AMP_TYPE_IDEAL                                     // アンプの種類
+#define AMP_CLASS AMP_CLASS_A                                       // アンプの級数
+#define IS_EFFECTIVE 0                                              // effectiveフラグ
+#define IBO 4.0                                                     // IBO
 #endif
 
+#define CLIPPING_RATIO 0.2                                          // クリッピングの閾値
 #define NUM_C (NUM_D + 1)                                           // cのビット数
 #define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
 #define NUM_S (NUM_C - 4)                                           // sのビット数
 #define NUM_B 2                                                     // bのビット数
 #define NUM_Z 4                                                     // zのビット数
+#define NUM_QAM ((int)pow(2.0, NUM_C))                              // QAMのコンステレーション数
+#define NUM_QAM_LSB ((int)pow(4.0, NUM_B))                          // MSBのコンステレーション数
+#define NUM_QAM_MSB (NUM_QAM / NUM_QAM_LSB)                         // LSBのコンステレーション数
 
-int count_add = 0;
-int count_mul = 0;
 
 // マッピングを出力する
 void run_mapping () {
@@ -71,7 +83,7 @@ void run_mapping () {
     multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
     // 変調
-    qam_modulation_lsb2(c, a, NUM_SUBCARRIER, NUM_QAM);
+    cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
     // オーバーサンプリング
     over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -81,7 +93,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/raw_mapping_%d-QAM_%d-subs(TS_CAF_U2).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, a, NUM_SUBCARRIER);
+    print_real_imag(fp, a, NUM_SUBCARRIER);
 
     // クリッピング
     clipping(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, CLIPPING_RATIO);
@@ -103,7 +115,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/caf_mapping_%d-QAM_%d-subs(TS_CAF_U2).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, a_caf,  NUM_SUBCARRIER);
+    print_real_imag(fp, a_caf,  NUM_SUBCARRIER);
 
     // トレリスシェーピング
     trellis_shaping_caf2(c, a_caf, a, NUM_SUBCARRIER, NUM_QAM);
@@ -116,7 +128,7 @@ void run_mapping () {
 
     // マッピングを出力
     fp = fsopen("w", "./Result/ts_mapping_%d-QAM_%d-subs(TS_CAF_U2).dat", NUM_QAM, NUM_SUBCARRIER);
-    print_map(fp, a,  NUM_SUBCARRIER);
+    print_real_imag(fp, a,  NUM_SUBCARRIER);
 
     // メモリ解放
     free(d);
@@ -179,7 +191,7 @@ void run_calc_papr_ccdf () {
         multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
         // 変調
-        qam_modulation_lsb2(c, a, NUM_SUBCARRIER, NUM_QAM);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -292,7 +304,7 @@ void run_calc_normalized_ccdf () {
         multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
         // 変調
-        qam_modulation_lsb2(c, a, NUM_SUBCARRIER, NUM_QAM);
+        cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
         // オーバーサンプリング
         over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -407,7 +419,7 @@ void run_calc_clipping_ratio_characteristic () {
             multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
             // 変調
-            qam_modulation_lsb2(c, a, NUM_SUBCARRIER, NUM_QAM);
+            cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -535,7 +547,7 @@ void run_calc_slm_characteristic () {
                 multiplexer(s, z, c, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
                 // 変調
-                qam_modulation_lsb2(c, a, NUM_SUBCARRIER, NUM_QAM);
+                cbts_qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
                 // オーバーサンプリング
                 over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -672,7 +684,7 @@ void run_calc_ber () {
             multiplexer(s1, z1, c1, NUM_S, NUM_Z, NUM_C, NUM_SUBCARRIER);
 
             // 変調
-            qam_modulation_lsb2(c1, a, NUM_SUBCARRIER, NUM_QAM);
+            cbts_qam_modulation(c1, a, NUM_SUBCARRIER, NUM_QAM_MSB, NUM_QAM_LSB, MAPPING_TYPE);
 
             // オーバーサンプリング
             over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
@@ -717,7 +729,7 @@ void run_calc_ber () {
             down_sampling(f, a, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
             // 復調
-            qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+            ts_qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
 
             // 信号を分離
             demultiplexer(c2, s2, z2, NUM_C, NUM_S, NUM_Z, NUM_SUBCARRIER);
@@ -729,7 +741,7 @@ void run_calc_ber () {
             multiplexer(s2, b2, d2, NUM_S, NUM_B, NUM_D, NUM_SUBCARRIER);
 
             // BERを計算
-            ber += count_be(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
+            ber += count_bit_error(d1, d2, NUM_D * NUM_SUBCARRIER) / (double)(NUM_D * NUM_SUBCARRIER);
 
             // 進捗を出力
             fprintf(stderr, "Eb/N0 = %.0d, trial = %d, BER = %e   \r", ebn0, i+1, ber / (double)(i+1));
