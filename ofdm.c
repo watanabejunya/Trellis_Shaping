@@ -296,7 +296,7 @@ void run_calc_ber () {
             down_sampling(f, a, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
 
             // 復調
-            qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM, MAPPING_TYPE);
+            qam_demodulation(a, c2, NUM_SUBCARRIER, NUM_QAM);
 
             // BERを計算
             ber += count_bit_error(c1, c2, NUM_C * NUM_SUBCARRIER) / (double)(NUM_C * NUM_SUBCARRIER);

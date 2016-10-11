@@ -23,6 +23,7 @@ typedef _Complex double complex;
 #define NUM_OFDM 100000                                             // OFDMシンボルを送る回数
 #define NUM_D 3                                                     // QAMのコンステレーション数
 #define NUM_SUBCARRIER 1024                                         // サブキャリア数
+#define WINDOW_SIZE (NUM_SUBCARRIER / 4)                            // トレリス窓のサイズ
 #define OVER_SAMPLING_FACTOR 8                                      // オーバーサンプリング係数
 #define MAPPING_TYPE 1                                              // トレリスシェーピングのマッピングタイプ
 #define AMP_TYPE AMP_TYPE_IDEAL                                     // アンプの種類

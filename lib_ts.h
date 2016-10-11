@@ -14,6 +14,9 @@
 typedef _Complex double complex;
 #endif
 
+#ifndef WINDOW_SIZE
+#define WINDOW_SIZE 64
+#endif
 
 // TSのノード
 typedef struct {
@@ -476,6 +479,7 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type)
     static node **nodes;                                                                // ノード
     static int memory_flag;                                                             // メモリ管理フラグ
     int sub, state, input;                                                              // ループカウンタ
+    int min_size;                                                                       // メトリックを計算するサイズ
     int i, j, l;                                                                        // ループカウンタ
 
     if (memory_flag == 0) {
@@ -536,6 +540,9 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type)
         // サブキャリアの位置
         sub = i - 1;
 
+        // 窓サイズを計算
+        min_size = ((i - 1) < WINDOW_SIZE) ? i - 1 : WINDOW_SIZE;
+
         // ノードメトリックの計算
         for (state = 0; state < num_state; state++) {
             if (nodes[i-1][state].metric > infty - 1.0) continue;
@@ -554,13 +561,13 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type)
                 branch_metric = 0;
 
                 // 第2項
-                for (l = 1; l <= i-2; l++) {
+                for (l = 1; l < min_size; l++) {
                     branch_metric = branch_metric + 2.0 * creal(conj(nodes[i-1][state].autocor[l]) * delta_table1[tmp_index][nodes[i-1][state].a_index[i-1-l]]);
                 }
 
                 // 第3項
                 if (type == 2) {
-                    for (l = 1; l <= i-1; l++) {
+                    for (l = 1; l <= min_size; l++) {
                         branch_metric =  branch_metric + delta_table2[tmp_index][nodes[i-1][state].a_index[i-1-l]];
                     }
                 }

@@ -303,7 +303,7 @@ void run_calc_normalized_ccdf () {
     srandom((unsigned)time(NULL));
 
     // 出力ファイルを開く
-    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER);
+    fp = fsopen("w", "./Result/ccdf_normalized_%d-QAM_%d-subs_beta-%.2lf(TS_CAF_U1).dat", NUM_QAM, NUM_SUBCARRIER, SCALING_FACTOR);
 
     for (i = 0; i < NUM_OFDM; i++) {
         // 信号を生成
