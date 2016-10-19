@@ -235,6 +235,68 @@ void run_calc_mean_papr () {
 }
 
 
+// 平均PAPRを計算
+void run_calc_average_power () {
+    int *c;                                     // 情報
+    complex *a;                                 // OFDMシンボル
+    fftw_complex *f;                            // FFT用(周波数領域)
+    fftw_complex *t;                            // FFT用(時間領域)
+    double power;                               // 平均電力
+    int i;                                      // ループカウンタ
+    FILE *fp;                                   // 出力用ファイルポインタ
+
+    // メモリの確保
+    c = (int *)malloc(NUM_C * NUM_SUBCARRIER * sizeof(int));
+    a = (complex *)malloc(NUM_SUBCARRIER * sizeof(complex));
+    f = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+    t = (fftw_complex *)fftw_malloc(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER * sizeof(fftw_complex));
+
+    // 乱数の初期化
+    srandom((unsigned)time(NULL));
+
+    // 出力ファイルを開く
+    fp = fsopen("w", "./Result/average_power_%d-QAM_%d-subs(OFDM).dat", NUM_QAM, NUM_SUBCARRIER);
+
+    // PAPRを初期化
+    power = 0.0;
+
+    for (i = 0; i < NUM_OFDM; i++) {
+        // 信号を生成
+        make_signal(c, NUM_C * NUM_SUBCARRIER);
+
+        // 変調
+        qam_modulation(c, a, NUM_SUBCARRIER, NUM_QAM);
+
+        // オーバーサンプリング
+        over_sampling(a, f, OVER_SAMPLING_FACTOR, NUM_SUBCARRIER);
+
+        // IFFT
+        ifft(OVER_SAMPLING_FACTOR * NUM_SUBCARRIER, f, t);
+
+        // PAPRを求める
+        power += calc_average_power(t, OVER_SAMPLING_FACTOR * NUM_SUBCARRIER);
+
+        // 進捗を出力
+        fprintf(stderr, "trial = %d, power = %lf   \r", i+1, power / (double)(i+1));
+    }
+
+    // PAPRを計算
+    power /= (double)(NUM_OFDM);
+
+    // ファイル出力
+    fprintf(fp, "%lf\n", power);
+
+    // 改行
+    printf("\n");
+
+    // メモリ解放
+    free(c);
+    free(a);
+    fftw_free(f);
+    fftw_free(t);
+}
+
+
 // BER特性のグラフを作成
 void run_calc_ber () {
     int *c1, *c2;                               // 情報
@@ -482,6 +544,9 @@ int main (int argc,char *argv[]) {
     } else if (strcmp(argv[1], "papr") == 0) {
         printf("Calculate mean PAPR.\n");
         run_calc_mean_papr();
+    } else if (strcmp(argv[1], "power") == 0) {
+        printf("Calculate average power.\n");
+        run_calc_average_power();
     } else if (strcmp(argv[1], "ber") == 0) {
         printf("Make Eb/N0 - BER graph.\n");
         run_calc_ber();
