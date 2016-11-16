@@ -65,7 +65,8 @@ void demultiplexer (int *d, int *s, int *b, int num_d, int num_s, int num_b, int
 
 
 //マルチプレクサ(num_s + num_b → num_d)
-void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n) {
+void multiplexer(int *s, int *b, int *d, int num_s, int num_b, int num_d, int n)
+{
     if (num_d != num_s + num_b) {
         fprintf(stderr, "%d and %d bits cannot be multiplexed to %d bits.\n", num_s, num_b, num_d);
         exit(-1);
@@ -86,7 +87,8 @@ void multiplexer (int *s, int *b, int *d, int num_s, int num_b, int num_d, int n
 
 
 // 畳み込み符号化(拘束長3)
-void convolutional_encoding2 (int *u, int *c, int n) {
+void convolutional_encoding2(int *u, int *c, int n)
+{
     int i;                              // ループカウンタ
     int register11, register12;         // シフトレジスタ
     int register21, register22;         // シフトレジスタ
@@ -115,7 +117,8 @@ void convolutional_encoding2 (int *u, int *c, int n) {
 
 
 // 畳み込み符号化(拘束長3)
-void convolutional_encoding3 (int *u, int *c, int n) {
+void convolutional_encoding3(int *u, int *c, int n)
+{
     int i;                              // ループカウンタ
     int register11, register12;           // シフトレジスタ
     int register21, register22;         // シフトレジスタ
@@ -151,7 +154,8 @@ void convolutional_encoding3 (int *u, int *c, int n) {
 
 
 // パリティ検査行列による復号(拘束長3)
-void parity_check_decoding2 (int *c, int *u, int n) {
+void parity_check_decoding2(int *c, int *u, int n)
+{
     int i;                                                      // ループカウンタ
     int register11, register12, register13, register14;         // シフトレジスタ
     int register21, register22, register23, register24;         // シフトレジスタ
@@ -185,7 +189,8 @@ void parity_check_decoding2 (int *c, int *u, int n) {
 
 
 // パリティ検査行列による復号(拘束長3)
-void parity_check_decoding3 (int *c, int *u, int n) {
+void parity_check_decoding3(int *c, int *u, int n)
+{
     int i;                                                      // ループカウンタ
     int register11, register12, register13, register14;
     int register21, register22, register23, register24;          // シフトレジスタ
@@ -229,7 +234,8 @@ void parity_check_decoding3 (int *c, int *u, int n) {
 
 
 // 並列パリティ検査行列の左逆行列による符号化(拘束長3)
-void inverse_parity_check_encoding2 (int *u, int *c, int n) {
+void inverse_parity_check_encoding2(int *u, int *c, int n)
+{
     int i;                                  // ループカウンタ
     int register1, register2;               // シフトレジスタ
 
@@ -253,7 +259,8 @@ void inverse_parity_check_encoding2 (int *u, int *c, int n) {
 
 
 // 並列パリティ検査行列の左逆行列による符号化(拘束長3)
-void inverse_parity_check_encoding3 (int *u, int *c, int n) {
+void inverse_parity_check_encoding3(int *u, int *c, int n)
+{
     int i;                                      // ループカウンタ
     int register1, register2, register3;        // シフトレジスタ
 
@@ -282,7 +289,8 @@ void inverse_parity_check_encoding3 (int *u, int *c, int n) {
 
 
 // コンステレーションを初期化
-void construct_constellation (complex *constellation, int m, int type) {
+void construct_constellation(complex *constellation, int m, int type)
+{
     // コンステレーション数のチェック
     if (check_power_of_4(m) == 0 && m <= 256) {
         printf("invalid number of constellation.\n");
@@ -327,7 +335,8 @@ void construct_constellation (complex *constellation, int m, int type) {
 }
 
 // トレリスシェイピングの変調
-void cbts_qam_modulation (int *c, complex *a, int n, int m_m, int m_l, int type) {
+void cbts_qam_modulation(int *c, complex *a, int n, int m_m, int m_l, int type)
+{
     // コンステレーション数のチェック
     if (check_power_of_4(m_m) == 0 || m_m > 64) {
         printf("invalid number of constellation!!.\n");
@@ -460,7 +469,7 @@ void ts_qam_demodulation(complex *a, int *c, int n, int m, int type)
 
 
 // トレリスシェーピング
-void trellis_shaping (int *c, complex *a, int n, int m, int type)
+void trellis_shaping(int *c, complex *a, int n, int m, int type)
 {
     const int num_state = 4;                                                            // 状態数
     const int num_trans = 2;                                                            // 遷移数
@@ -615,7 +624,8 @@ void trellis_shaping (int *c, complex *a, int n, int m, int type)
 
 
 // トレリスシェーピング
-void clipping_based_trellis_shaping (int *c, complex *a_caf, complex *a, int n, int m, int type) {
+void clipping_based_trellis_shaping(int *c, complex *a_caf, complex *a, int n, int m, int type)
+{
     const int num_state = 4;                                                            // 状態数
     const int num_trans = 2;                                                            // 遷移数
     const int next_state[num_state][num_trans] = {{0,1}, {2,3}, {0,1}, {2,3}};          // 次状態
