@@ -33,6 +33,7 @@ void copy_double(double *x, double *x_copy, int n);
 void copy_complex(complex *x, complex *x_copy, int n);
 void scale_complex(complex *x, int n, double scale);
 void xor_addition(int *x, int *y, int n);
+void random_interleave(int *x, int *y, int *p, int n);
 int convert_binary_into_decimal(int *b, int n);
 void convert_decimal_into_binary(int d, int *b, int n);
 int check_power_of_2(int n);
@@ -235,12 +236,49 @@ void scale_complex(complex *x, int n, double scale)
 }
 
 
-// インタリーバ
+// XOR加算
 void xor_addition (int *x, int *y, int n) {
     int i;
 
     for (i = 0; i < n; i++) {
         x[i] = x[i] ^ y[i];
+    }
+}
+
+
+// インターリーブ
+void random_interleave(int *x, int *y, int *p, int n)
+{
+    int index1, index2;
+    int tmp;
+    int i;
+
+    for (i = 0; i < n; i++) {
+        p[i] = i;
+    }
+
+    for (i = 0; i < n * 10; i++) {
+        index1 = random() % n;
+        index2 = random() % n;
+
+        tmp = p[index1];
+        p[index1] = p[index2];
+        p[index2] = tmp;
+    }
+
+    for (i = 0; i < n; i++) {
+        y[i] = x[p[i]];
+    }
+}
+
+
+// インターリーブ
+void random_deinterleave(int *x, int *y, int *p, int n)
+{
+    int i;
+
+    for (i = 0; i < n; i++) {
+        y[p[i]] = x[i];
     }
 }
 
